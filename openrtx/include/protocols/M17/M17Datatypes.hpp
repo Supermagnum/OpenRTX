@@ -1,22 +1,8 @@
-/***************************************************************************
- *   Copyright (C) 2021 - 2025 by Federico Amedeo Izzo IU2NUO,             *
- *                                Niccolò Izzo IU2KIN                      *
- *                                Frederik Saraci IU2NRO                   *
- *                                Silvano Seva IU2KWO                      *
- *                                                                         *
- *   This program is free software; you can redistribute it and/or modify  *
- *   it under the terms of the GNU General Public License as published by  *
- *   the Free Software Foundation; either version 3 of the License, or     *
- *   (at your option) any later version.                                   *
- *                                                                         *
- *   This program is distributed in the hope that it will be useful,       *
- *   but WITHOUT ANY WARRANTY; without even the implied warranty of        *
- *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the         *
- *   GNU General Public License for more details.                          *
- *                                                                         *
- *   You should have received a copy of the GNU General Public License     *
- *   along with this program; if not, see <http://www.gnu.org/licenses/>   *
- ***************************************************************************/
+/*
+ * SPDX-FileCopyrightText: Copyright 2020-2026 OpenRTX Contributors
+ * 
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
 
 #ifndef M17_DATATYPES_H
 #define M17_DATATYPES_H
@@ -72,26 +58,39 @@ enum M17ScramblingType
     M17_SCRAMBLING_24BIT    = 2,
 };
 
+enum M17GNSSSource {
+    M17_GNSS_SOURCE_M17CLIENT = 0,
+    M17_GNSS_SOURCE_OPENRTX = 1
+};
+
+enum M17GNSSStationType {
+    M17_GNSS_STATION_FIXED = 0,
+    M17_GNSS_STATION_MOBILE = 1,
+    M17_GNSS_STATION_HANDHELD = 2
+};
 
 /**
  * Data structure for M17 GNSS metadata field.
+ * The fields are individually set to big endian.
  */
 typedef struct __attribute__((packed))
 {
-    uint8_t  data_src;          //< Data source
-    uint8_t  station_type;      //< Station type
-    uint8_t  lat_deg;           //< Latitude, whole number
-    uint16_t lat_dec;           //< Latitude, decimal part multiplied by 65535
-    uint8_t  lon_deg;           //< Longitude, whole number
-    uint16_t lon_dec;           //< Longitude, decimal part multiplied by 65535
-    uint8_t  lat_sign  : 1;     //< Latitude N/S: 0 = north, 1 = south
-    uint8_t  lon_sign  : 1;     //< Longitude E/W: 0 = east, 1 = west
-    uint8_t  alt_valid : 1;     //< Altitude data valid
-    uint8_t  spd_valid : 1;     //< Speed data valid
-    uint8_t  _unused   : 4;
-    uint16_t altitude;          //< Altitude above sea level in feet + 1500
-    uint16_t bearing;           //< Bearing in degrees, whole number
-    uint8_t  speed;             //< Speed in mph, whole number
+    uint8_t     station_type    : 4;  //< Station type
+    uint8_t     data_src        : 4;  //< Data source
+    uint8_t     bearing_1       : 1;  //< MSB of bearing
+    uint8_t     radius          : 3;  //< estimate of lateral uncertainty, based on HDOP value
+    uint8_t     radius_valid    : 1;  //< radius data valid
+    uint8_t     velocity_valid  : 1;  //< speed and bearing valid
+    uint8_t     alt_valid       : 1;  //< Altitude data valid
+    uint8_t     coords_valid    : 1;  //< Coordinate data valid
+    uint8_t     bearing_2       : 8;  //< Lower 8 bits of bearing
+    int8_t  latitude_bytes[3];        //< Latitude, twos complement, positive north
+    int8_t  longitude_bytes[3];       //< Longitude, twos complement, positive north
+    uint16_t    altitude        : 16; //< Numeric altitude in 0.5m steps offset by 500m
+    uint16_t    speed_1         : 8,  //< Numeric speed in 0.5 km/h steps; MSB
+                                : 4,
+                speed_2         : 4;  //< LSB
+    uint8_t                     : 8;
 }
 gnssData_t;
 

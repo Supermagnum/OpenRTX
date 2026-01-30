@@ -1,19 +1,7 @@
 #!/bin/bash -e
-
-#  Copyright (C) 2021 by Alain Carlucci.
 #
-#  This program is free software; you can redistribute it and/or modify
-#  it under the terms of the GNU General Public License as published by
-#  the Free Software Foundation; either version 3 of the License, or
-#  (at your option) any later version.
-#
-#  This program is distributed in the hope that it will be useful,
-#  but WITHOUT ANY WARRANTY; without even the implied warranty of
-#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#  GNU General Public License for more details.
-#
-#  You should have received a copy of the GNU General Public License
-#  along with this program; if not, see <http://www.gnu.org/licenses/>
+# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-FileCopyrightText: Copyright 2020-2026 OpenRTX Contributors
 
 function show_help {
     echo "OpenRTX clang-format tool."
@@ -69,8 +57,12 @@ openrtx/include/interfaces/radio.h
 openrtx/include/peripherals/gps.h
 openrtx/include/peripherals/rng.h
 openrtx/include/peripherals/rtc.h
+openrtx/include/protocols/M17/Callsign.hpp
+openrtx/include/protocols/M17/M17FrameDecoder.hpp
 openrtx/src/core/dsp.cpp
 openrtx/src/core/memory_profiling.cpp
+openrtx/src/protocols/M17/Callsign.cpp
+openrtx/src/protocols/M17/M17FrameDecoder.cpp
 platform/drivers/ADC/ADC0_GDx.h
 platform/drivers/audio/MAX9814.h
 platform/drivers/baseband/MCP4551.h
@@ -88,6 +80,7 @@ platform/targets/linux/emulator/sdl_engine.h
 platform/targets/ttwrplus/pmu.h
 tests/platform/mic_test.c
 tests/platform/codec2_encode_test.c
+tests/unit/M17_callsign.cpp
 EOF
 )
 

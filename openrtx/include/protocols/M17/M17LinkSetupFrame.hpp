@@ -1,22 +1,8 @@
-/***************************************************************************
- *   Copyright (C) 2021 - 2025 by Federico Amedeo Izzo IU2NUO,             *
- *                                Niccolò Izzo IU2KIN                      *
- *                                Frederik Saraci IU2NRO                   *
- *                                Silvano Seva IU2KWO                      *
- *                                                                         *
- *   This program is free software; you can redistribute it and/or modify  *
- *   it under the terms of the GNU General Public License as published by  *
- *   the Free Software Foundation; either version 3 of the License, or     *
- *   (at your option) any later version.                                   *
- *                                                                         *
- *   This program is distributed in the hope that it will be useful,       *
- *   but WITHOUT ANY WARRANTY; without even the implied warranty of        *
- *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the         *
- *   GNU General Public License for more details.                          *
- *                                                                         *
- *   You should have received a copy of the GNU General Public License     *
- *   along with this program; if not, see <http://www.gnu.org/licenses/>   *
- ***************************************************************************/
+/*
+ * SPDX-FileCopyrightText: Copyright 2020-2026 OpenRTX Contributors
+ * 
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
 
 #ifndef M17_LINKSETUPFRAME_H
 #define M17_LINKSETUPFRAME_H
@@ -27,7 +13,9 @@
 
 #include <string>
 #include <array>
-#include "M17Datatypes.hpp"
+#include "protocols/M17/M17Datatypes.hpp"
+#include "protocols/M17/Callsign.hpp"
+#include "core/gps.h"
 
 namespace M17
 {
@@ -64,28 +52,28 @@ public:
      *
      * @param callsign: string containing the source callsign.
      */
-    void setSource(const std::string& callsign);
+    void setSource(const Callsign& callsign);
 
     /**
      * Get source callsign.
      *
      * @return: string containing the source callsign.
      */
-    std::string getSource();
+    Callsign getSource();
 
     /**
      * Set destination callsign.
      *
      * @param callsign: string containing the destination callsign.
      */
-    void setDestination(const std::string& callsign);
+    void setDestination(const Callsign& callsign);
 
     /**
      * Get destination callsign.
      *
      * @return: string containing the destination callsign.
      */
-    std::string getDestination();
+    Callsign getDestination();
 
     /**
      * Get stream type field.
@@ -135,10 +123,20 @@ public:
      * Generate one of the six possible LSF chunks for embedding in data frame's
      * LICH field. Output is the Golay (24,12) encoded LSF chunk.
      *
+     * @param segment: LSF chunk to be filled
      * @param segmentNum: segment number, between 0 and 5.
-     * @return Golay (24,12) encoded LSF chunk.
      */
-    lich_t generateLichSegment(const uint8_t segmentNum);
+    void generateLichSegment(lich_t &segment, const uint8_t segmentNum);
+
+    /**
+     * @brief Set the GNSS data for the LSF's meta feature. This method not only
+     * handles converting the datatypes, but it also handles the byte swapping
+     * necessary since M17 is big endian but the runtime is little endian.
+     *
+     * @param position
+     * @param stationType
+     */
+    void setGnssData(const gps_t *position, const M17GNSSStationType stationType);
 
 private:
 

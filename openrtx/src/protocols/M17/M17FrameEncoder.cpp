@@ -1,22 +1,8 @@
-/***************************************************************************
- *   Copyright (C) 2022 - 2025 by Federico Amedeo Izzo IU2NUO,             *
- *                                Niccolò Izzo IU2KIN                      *
- *                                Frederik Saraci IU2NRO                   *
- *                                Silvano Seva IU2KWO                      *
- *                                                                         *
- *   This program is free software; you can redistribute it and/or modify  *
- *   it under the terms of the GNU General Public License as published by  *
- *   the Free Software Foundation; either version 3 of the License, or     *
- *   (at your option) any later version.                                   *
- *                                                                         *
- *   This program is distributed in the hope that it will be useful,       *
- *   but WITHOUT ANY WARRANTY; without even the implied warranty of        *
- *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the         *
- *   GNU General Public License for more details.                          *
- *                                                                         *
- *   You should have received a copy of the GNU General Public License     *
- *   along with this program; if not, see <http://www.gnu.org/licenses/>   *
- ***************************************************************************/
+/*
+ * SPDX-FileCopyrightText: Copyright 2020-2026 OpenRTX Contributors
+ * 
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
 
 #include "protocols/M17/M17CodePuncturing.hpp"
 #include "protocols/M17/M17Decorrelator.hpp"
@@ -41,24 +27,16 @@ void M17FrameEncoder::reset()
     // Clear counters
     currentLich       = 0;
     streamFrameNumber = 0;
+    updateLsf = false;
 
-    // Clear all the LICH segments
-    for(auto& segment : lichSegments)
-    {
-        segment.fill(0x00);
-    }
+    // Clear the LSF
+    currLsf.clear();
 }
 
 void M17FrameEncoder::encodeLsf(M17LinkSetupFrame& lsf, frame_t& output)
 {
-    // Ensure the LSF to be encoded has a valid CRC field
     lsf.updateCrc();
-
-    // Generate the Golay(24,12) LICH segments
-    for(size_t i = 0; i < lichSegments.size(); i++)
-    {
-        lichSegments[i] = lsf.generateLichSegment(i);
-    }
+    currLsf = lsf;
 
     // Encode the LSF, then puncture and decorrelate its data
     std::array<uint8_t, 61> encoded;
@@ -96,15 +74,19 @@ uint16_t M17FrameEncoder::encodeStreamFrame(const payload_t& payload,
     std::array<uint8_t, 34> punctured;
     puncture(encoded, punctured, DATA_PUNCTURE);
 
+    // Generate LICH segment
+    lich_t lich;
+    currLsf.generateLichSegment(lich, currentLich);
+    currentLich = (currentLich + 1) % NUM_LSF_CHUNKS;
+    if((currentLich == 0) && (updateLsf == true)) {
+        currLsf = newLsf;
+        updateLsf = false;
+    }
+
     // Add LICH segment to coded data
     std::array<uint8_t, 46> frame;
-    auto it = std::copy(lichSegments[currentLich].begin(),
-                        lichSegments[currentLich].end(),
-                        frame.begin());
+    auto it = std::copy(lich.begin(), lich.end(), frame.begin());
     std::copy(punctured.begin(), punctured.end(), it);
-
-    // Increment LICH counter after copy
-    currentLich = (currentLich + 1) % lichSegments.size();
 
     interleave(frame);
     decorrelate(frame);

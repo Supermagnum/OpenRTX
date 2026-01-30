@@ -1,27 +1,14 @@
-/***************************************************************************
- *   Copyright (C) 2021 - 2025 by Federico Amedeo Izzo IU2NUO,             *
- *                                Niccolò Izzo IU2KIN                      *
- *                                Frederik Saraci IU2NRO                   *
- *                                Silvano Seva IU2KWO                      *
- *                                                                         *
- *   This program is free software; you can redistribute it and/or modify  *
- *   it under the terms of the GNU General Public License as published by  *
- *   the Free Software Foundation; either version 3 of the License, or     *
- *   (at your option) any later version.                                   *
- *                                                                         *
- *   This program is distributed in the hope that it will be useful,       *
- *   but WITHOUT ANY WARRANTY; without even the implied warranty of        *
- *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the         *
- *   GNU General Public License for more details.                          *
- *                                                                         *
- *   You should have received a copy of the GNU General Public License     *
- *   along with this program; if not, see <http://www.gnu.org/licenses/>   *
- ***************************************************************************/
+/*
+ * SPDX-FileCopyrightText: Copyright 2020-2026 OpenRTX Contributors
+ * 
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
 
 #include <cstring>
 #include "protocols/M17/M17Golay.hpp"
 #include "protocols/M17/M17Callsign.hpp"
 #include "protocols/M17/M17LinkSetupFrame.hpp"
+#include "core/utils.h"
 
 using namespace M17;
 
@@ -41,24 +28,24 @@ void M17LinkSetupFrame::clear()
     data.dst.fill(0xFF);
 }
 
-void M17LinkSetupFrame::setSource(const std::string& callsign)
+void M17LinkSetupFrame::setSource(const Callsign& callsign)
 {
-    encode_callsign(callsign, data.src);
+    data.src = callsign;
 }
 
-std::string M17LinkSetupFrame::getSource()
+Callsign M17LinkSetupFrame::getSource()
 {
-    return decode_callsign(data.src);
+    return Callsign(data.src);
 }
 
-void M17LinkSetupFrame::setDestination(const std::string& callsign)
+void M17LinkSetupFrame::setDestination(const Callsign& callsign)
 {
-    encode_callsign(callsign, data.dst);
+    data.dst = callsign;
 }
 
-std::string M17LinkSetupFrame::getDestination()
+Callsign M17LinkSetupFrame::getDestination()
 {
-    return decode_callsign(data.dst);
+    return Callsign(data.dst);
 }
 
 streamType_t M17LinkSetupFrame::getType()
@@ -101,7 +88,8 @@ const uint8_t * M17LinkSetupFrame::getData()
     return reinterpret_cast < const uint8_t * >(&data);
 }
 
-lich_t M17LinkSetupFrame::generateLichSegment(const uint8_t segmentNum)
+void M17LinkSetupFrame::generateLichSegment(lich_t &segment,
+                                            const uint8_t segmentNum)
 {
     /*
      * The M17 protocol specification prescribes that the content of the
@@ -127,15 +115,54 @@ lich_t M17LinkSetupFrame::generateLichSegment(const uint8_t segmentNum)
 
     // Encode each block and assemble the final data block.
     // NOTE: shift and bitswap required to genereate big-endian data.
-    lich_t result;
     for(size_t i = 0; i < blocks.size(); i++)
     {
         uint32_t encoded = golay24_encode(blocks[i]);
         encoded          = __builtin_bswap32(encoded << 8);
-        memcpy(&result[3*i], &encoded, 3);
+        memcpy(&segment[3*i], &encoded, 3);
+    }
+}
+
+void M17LinkSetupFrame::setGnssData(const gps_t *position,
+                                    const M17GNSSStationType stationType)
+{
+    if(position->fix_type < FIX_TYPE_2D)
+        return;
+
+    streamType_t streamType = getType();
+    streamType.fields.encType = M17_ENCRYPTION_NONE;
+    streamType.fields.encSubType = M17_META_GNSS;
+    setType(streamType);
+
+    data.meta.gnss_data.data_src = M17_GNSS_SOURCE_OPENRTX;
+    data.meta.gnss_data.station_type = stationType;
+
+    data.meta.gnss_data.coords_valid = 1;
+    data.meta.gnss_data.alt_valid = 1;
+    data.meta.gnss_data.velocity_valid = 1;
+    data.meta.gnss_data.radius_valid = 0;
+
+    data.meta.gnss_data.radius = position->hdop;
+
+    data.meta.gnss_data.bearing_1 = (position->tmg_true >> 8) & 0x01; // MSB (1 bit)
+    data.meta.gnss_data.bearing_2 = position->tmg_true & 0xFF; // Lower 8 bits
+
+    // Encode the coordinates in Q1.24 format, swap the byte order to big
+    // endian as required by M17 specification
+    int32_t lat_encoded = coordToFixedPoint(position->latitude, 90);
+    int32_t lon_encoded = coordToFixedPoint(position->longitude, 180);
+    for(uint8_t i = 0; i < 3; i++) {
+        data.meta.gnss_data.latitude_bytes[i] = *((uint8_t*)&lat_encoded + 2 - i);
+        data.meta.gnss_data.longitude_bytes[i] = *((uint8_t*)&lon_encoded + 2 - i);
     }
 
-    return result;
+    uint16_t speed = (uint16_t)position->speed * 2;
+    data.meta.gnss_data.speed_1 = speed >> 4; // MBS
+    data.meta.gnss_data.speed_2 = speed & 0x0F; // Lower 4 bits
+
+    // Structure numeric fields that need offset and steps
+    uint16_t alt = (uint16_t)1000 + position->altitude * 2;
+    data.meta.gnss_data.altitude = __builtin_bswap16(alt);
 }
 
 uint16_t M17LinkSetupFrame::crc16(const void *data, const size_t len) const

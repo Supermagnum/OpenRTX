@@ -1,22 +1,8 @@
-/***************************************************************************
- *   Copyright (C) 2022 - 2025 by Federico Amedeo Izzo IU2NUO,             *
- *                                Niccolò Izzo IU2KIN                      *
- *                                Frederik Saraci IU2NRO                   *
- *                                Silvano Seva IU2KWO                      *
- *                                                                         *
- *   This program is free software; you can redistribute it and/or modify  *
- *   it under the terms of the GNU General Public License as published by  *
- *   the Free Software Foundation; either version 3 of the License, or     *
- *   (at your option) any later version.                                   *
- *                                                                         *
- *   This program is distributed in the hope that it will be useful,       *
- *   but WITHOUT ANY WARRANTY; without even the implied warranty of        *
- *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the         *
- *   GNU General Public License for more details.                          *
- *                                                                         *
- *   You should have received a copy of the GNU General Public License     *
- *   along with this program; if not, see <http://www.gnu.org/licenses/>   *
- ***************************************************************************/
+/*
+ * SPDX-FileCopyrightText: Copyright 2020-2026 OpenRTX Contributors
+ * 
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
 
 #ifndef M17FRAMEDECODER_H
 #define M17FRAMEDECODER_H
@@ -35,13 +21,12 @@
 namespace M17
 {
 
-enum class M17FrameType : uint8_t
-{
-    PREAMBLE   = 0,    ///< Frame contains a preamble.
-    LINK_SETUP = 1,    ///< Frame is a Link Setup Frame.
-    STREAM     = 2,    ///< Frame is a stream data frame.
-    PACKET     = 3,    ///< Frame is a packet data frame.
-    UNKNOWN    = 4     ///< Frame is unknown.
+enum class M17FrameType : uint8_t {
+    PREAMBLE = 0,   ///< Frame contains a preamble.
+    LINK_SETUP = 1, ///< Frame is a Link Setup Frame.
+    STREAM = 2,     ///< Frame is a stream data frame.
+    PACKET = 3,     ///< Frame is a packet data frame.
+    UNKNOWN = 4     ///< Frame is unknown.
 };
 
 /**
@@ -50,7 +35,6 @@ enum class M17FrameType : uint8_t
 class M17FrameDecoder
 {
 public:
-
     /**
      * Constructor.
      */
@@ -73,7 +57,7 @@ public:
      * @param frame: byte array containg frame data.
      * @return the type of frame recognized.
      */
-    M17FrameType decodeFrame(const frame_t& frame);
+    M17FrameType decodeFrame(const frame_t &frame);
 
     /**
      * Get the latest Link Setup Frame decoded. Check of the validity of the
@@ -81,7 +65,7 @@ public:
      *
      * @return a reference to the latest Link Setup Frame decoded.
      */
-    const M17LinkSetupFrame& getLsf()
+    const M17LinkSetupFrame &getLsf()
     {
         return lsf;
     }
@@ -91,13 +75,12 @@ public:
      *
      * @return a reference to the latest stream data frame decoded.
      */
-    const M17StreamFrame& getStreamFrame()
+    const M17StreamFrame &getStreamFrame()
     {
         return streamFrame;
     }
 
 private:
-
     /**
      * Determine frame type by searching which syncword among the standard M17
      * ones has the minumum hamming distance from the given one. If the hamming
@@ -107,7 +90,7 @@ private:
      * @param syncWord: frame syncword.
      * @return frame type based on the given syncword.
      */
-    M17FrameType getFrameType(const std::array< uint8_t, 2 >& syncWord);
+    M17FrameType getFrameType(const std::array<uint8_t, 2> &syncWord);
 
     /**
      * Decode Link Setup Frame data and update the internal LSF field with
@@ -115,7 +98,7 @@ private:
      *
      * @param data: byte array containg frame data, without sync word.
      */
-    void decodeLSF(const std::array< uint8_t, 46 >& data);
+    void decodeLSF(const std::array<uint8_t, 46> &data);
 
     /**
      * Decode stream data and update the internal LSF field with the new
@@ -123,7 +106,7 @@ private:
      *
      * @param data: byte array containg frame data, without sync word.
      */
-    void decodeStream(const std::array< uint8_t, 46 >& data);
+    void decodeStream(const std::array<uint8_t, 46> &data);
 
     /**
      * Decode a LICH block.
@@ -133,19 +116,21 @@ private:
      * @param lich: LICH block to be decoded.
      * @return true when the LICH block is successfully decoded.
      */
-    bool decodeLich(std::array< uint8_t, 6 >& segment, const lich_t& lich);
+    bool decodeLich(std::array<uint8_t, 6> &segment, const lich_t &lich);
 
-
-    uint8_t           lsfSegmentMap;    ///< Bitmap for LSF reassembly from LICH
-    M17LinkSetupFrame lsf;              ///< Latest LSF received.
-    M17LinkSetupFrame lsfFromLich;      ///< LSF assembled from LICH segments.
-    M17StreamFrame    streamFrame;      ///< Latest stream dat frame received.
-    M17HardViterbi    viterbi;          ///< Viterbi decoder.
+    uint8_t lsfSegmentMap;         ///< Bitmap for LSF reassembly from LICH
+    M17LinkSetupFrame lsf;         ///< Latest LSF received.
+    M17LinkSetupFrame lsfFromLich; ///< LSF assembled from LICH segments.
+    M17StreamFrame streamFrame;    ///< Latest stream dat frame received.
+    M17HardViterbi viterbi;        ///< Viterbi decoder.
 
     ///< Maximum allowed hamming distance when determining the frame type.
     static constexpr uint8_t MAX_SYNC_HAMM_DISTANCE = 4;
+
+    ///< Maximum number of corrected bit errors allowed in a stream frame.
+    static constexpr uint16_t MAX_VITERBI_ERRORS = 15;
 };
 
-}      // namespace M17
+} // namespace M17
 
 #endif // M17FRAMEDECODER_H

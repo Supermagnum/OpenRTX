@@ -1,31 +1,21 @@
-/***************************************************************************
- *   Copyright (C) 2021 - 2025 by Federico Amedeo Izzo IU2NUO,             *
- *                                Niccolò Izzo IU2KIN                      *
- *                                Frederik Saraci IU2NRO                   *
- *                                Silvano Seva IU2KWO                      *
- *                                                                         *
- *   This program is free software; you can redistribute it and/or modify  *
- *   it under the terms of the GNU General Public License as published by  *
- *   the Free Software Foundation; either version 3 of the License, or     *
- *   (at your option) any later version.                                   *
- *                                                                         *
- *   This program is distributed in the hope that it will be useful,       *
- *   but WITHOUT ANY WARRANTY; without even the implied warranty of        *
- *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the         *
- *   GNU General Public License for more details.                          *
- *                                                                         *
- *   You should have received a copy of the GNU General Public License     *
- *   along with this program; if not, see <http://www.gnu.org/licenses/>   *
- ***************************************************************************/
+/*
+ * SPDX-FileCopyrightText: Copyright 2020-2026 OpenRTX Contributors
+ * 
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
 
 #include "interfaces/platform.h"
 #include "interfaces/delays.h"
 #include "interfaces/audio.h"
 #include "interfaces/radio.h"
 #include "protocols/M17/M17Callsign.hpp"
+#include "protocols/M17/M17Datatypes.hpp"
 #include "rtx/OpMode_M17.hpp"
 #include "core/audio_codec.h"
 #include <errno.h>
+#include "core/gps.h"
+#include "core/state.h"
+#include "core/utils.h"
 #include "rtx/rtx.h"
 
 #ifdef PLATFORM_MOD17
@@ -206,8 +196,9 @@ void OpMode_M17::rxState(rtxStatus_t *const status)
                 dataValid = true;
 
                 // Retrieve stream source and destination data
-                std::string dst = lsf.getDestination();
-                std::string src = lsf.getSource();
+                Callsign dst = lsf.getDestination();
+                Callsign src = lsf.getSource();
+                strncpy(status->M17_dst, dst, 10);
 
                 // Retrieve extended callsign data
                 streamType_t streamType = lsf.getType();
@@ -218,8 +209,8 @@ void OpMode_M17::rxState(rtxStatus_t *const status)
                     extendedCall = true;
 
                     meta_t& meta = lsf.metadata();
-                    std::string exCall1 = decode_callsign(meta.extended_call_sign.call1);
-                    std::string exCall2 = decode_callsign(meta.extended_call_sign.call2);
+                    Callsign exCall1(meta.extended_call_sign.call1);
+                    Callsign exCall2(meta.extended_call_sign.call2);
 
                     //
                     // The source callsign only contains the last link when
@@ -227,21 +218,16 @@ void OpMode_M17::rxState(rtxStatus_t *const status)
                     // the true source of a transmission, we need to store the first
                     // extended callsign in M17_src.
                     //
-                    strncpy(status->M17_src,  exCall1.c_str(), 10);
-                    strncpy(status->M17_refl, exCall2.c_str(), 10);
-
-                    extendedCall = true;
+                    strncpy(status->M17_src,  exCall1, 10);
+                    strncpy(status->M17_refl, exCall2, 10);
+                    strncpy(status->M17_link, src, 10);
+                } else {
+                    strncpy(status->M17_src, src, 10);
                 }
 
                 // Set source and destination fields.
                 // If we have received an extended callsign the src will be the RF link address
                 // The M17_src will already be stored from the extended callsign
-                strncpy(status->M17_dst, dst.c_str(), 10);
-
-                if(extendedCall)
-                    strncpy(status->M17_link, src.c_str(), 10);
-                else
-                    strncpy(status->M17_src, src.c_str(), 10);
 
                 // Check CAN on RX, if enabled.
                 // If check is disabled, force match to true.
@@ -250,7 +236,8 @@ void OpMode_M17::rxState(rtxStatus_t *const status)
 
                 // Check if the destination callsign of the incoming transmission
                 // matches with ours
-                bool callMatch = compareCallsigns(std::string(status->source_address), dst);
+                bool callMatch = (Callsign(status->source_address) == dst)
+                               || dst.isSpecial();
 
                 // Open audio path only if CAN and callsign match
                 uint8_t pthSts = audioPath_getStatus(rxAudioPath);
@@ -306,13 +293,14 @@ void OpMode_M17::txState(rtxStatus_t *const status)
     {
         startTx = false;
 
-        std::string src(status->source_address);
-        std::string dst(status->destination_address);
         M17LinkSetupFrame lsf;
 
         lsf.clear();
-        lsf.setSource(src);
-        if(!dst.empty()) lsf.setDestination(dst);
+        lsf.setSource(status->source_address);
+
+        Callsign dst(status->destination_address);
+        if(!dst.isEmpty())
+            lsf.setDestination(dst);
 
         streamType_t type;
         type.fields.dataMode = M17_DATAMODE_STREAM;     // Stream
@@ -320,7 +308,11 @@ void OpMode_M17::txState(rtxStatus_t *const status)
         type.fields.CAN      = status->can;             // Channel access number
 
         lsf.setType(type);
-        lsf.updateCrc();
+
+        if(state.settings.gps_enabled) {
+            lsf.setGnssData(&state.gps_data, M17_GNSS_STATION_HANDHELD);
+            gpsTimer = 0;
+        }
 
         encoder.reset();
         encoder.encodeLsf(lsf, m17Frame);
@@ -333,6 +325,17 @@ void OpMode_M17::txState(rtxStatus_t *const status)
         modulator.start();
         modulator.sendPreamble();
         modulator.sendFrame(m17Frame);
+    }
+
+    if(state.settings.gps_enabled) {
+        gpsTimer++;
+
+        if(gpsTimer >= GPS_UPDATE_TICKS) {
+            auto lsf = encoder.getCurrentLsf();
+            lsf.setGnssData(&state.gps_data, M17_GNSS_STATION_HANDHELD);
+            encoder.updateLsfData(lsf);
+            gpsTimer = 0;
+        }
     }
 
     payload_t dataFrame;

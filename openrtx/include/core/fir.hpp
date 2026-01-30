@@ -1,22 +1,8 @@
-/***************************************************************************
- *   Copyright (C) 2022 - 2025 by Federico Amedeo Izzo IU2NUO,             *
- *                                Niccolò Izzo IU2KIN                      *
- *                                Frederik Saraci IU2NRO                   *
- *                                Silvano Seva IU2KWO                      *
- *                                                                         *
- *   This program is free software; you can redistribute it and/or modify  *
- *   it under the terms of the GNU General Public License as published by  *
- *   the Free Software Foundation; either version 3 of the License, or     *
- *   (at your option) any later version.                                   *
- *                                                                         *
- *   This program is distributed in the hope that it will be useful,       *
- *   but WITHOUT ANY WARRANTY; without even the implied warranty of        *
- *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the         *
- *   GNU General Public License for more details.                          *
- *                                                                         *
- *   You should have received a copy of the GNU General Public License     *
- *   along with this program; if not, see <http://www.gnu.org/licenses/>   *
- ***************************************************************************/
+/*
+ * SPDX-FileCopyrightText: Copyright 2020-2026 OpenRTX Contributors
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
 
 #ifndef FIR_H
 #define FIR_H
@@ -63,19 +49,26 @@ public:
      */
     float operator()(const float& input)
     {
+        float acc = 0.0f;
+        size_t i;
+
+        pos = (pos == 0 ? N - 1 : pos - 1);
         hist[pos] = input;
-        pos = (pos + 1) % N;
+        hist[pos + N] = input;
 
-        float  result = 0.0;
-        size_t index  = pos;
-
-        for(size_t i = 0; i < N; i++)
-        {
-            index   = (index != 0 ? index - 1 : N - 1);
-            result += hist[index] * taps[i];
+        // Unroll loop by 4
+        for (i = 0; i < (N & ~size_t(3)); i += 4) {
+            acc += hist[pos + i] * taps[i];
+            acc += hist[pos + i + 1] * taps[i + 1];
+            acc += hist[pos + i + 2] * taps[i + 2];
+            acc += hist[pos + i + 3] * taps[i + 3];
         }
 
-        return result;
+        // Remaining taps
+        for (; i < N; i++)
+            acc += hist[pos + i] * taps[i];
+
+        return acc;
     }
 
     /**
@@ -90,7 +83,7 @@ public:
 private:
 
     const std::array< float, N >& taps;    ///< FIR filter coefficients.
-    std::array< float, N >        hist;    ///< History of past inputs.
+    std::array< float, 2 * N >    hist;    ///< History of past inputs.
     size_t                        pos;     ///< Current position in history.
 };
 

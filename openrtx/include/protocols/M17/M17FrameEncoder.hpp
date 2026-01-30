@@ -1,22 +1,8 @@
-/***************************************************************************
- *   Copyright (C) 2022 - 2025 by Federico Amedeo Izzo IU2NUO,             *
- *                                Niccolò Izzo IU2KIN                      *
- *                                Frederik Saraci IU2NRO                   *
- *                                Silvano Seva IU2KWO                      *
- *                                                                         *
- *   This program is free software; you can redistribute it and/or modify  *
- *   it under the terms of the GNU General Public License as published by  *
- *   the Free Software Foundation; either version 3 of the License, or     *
- *   (at your option) any later version.                                   *
- *                                                                         *
- *   This program is distributed in the hope that it will be useful,       *
- *   but WITHOUT ANY WARRANTY; without even the implied warranty of        *
- *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the         *
- *   GNU General Public License for more details.                          *
- *                                                                         *
- *   You should have received a copy of the GNU General Public License     *
- *   along with this program; if not, see <http://www.gnu.org/licenses/>   *
- ***************************************************************************/
+/*
+ * SPDX-FileCopyrightText: Copyright 2020-2026 OpenRTX Contributors
+ * 
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
 
 #ifndef M17FRAMEENCODER_H
 #define M17FRAMEENCODER_H
@@ -92,12 +78,38 @@ public:
      */
     void encodeEotFrame(frame_t& output);
 
+    /**
+     * Get a copy of the LSF data belonging to the current transmission.
+     *
+     * @return LSF data.
+     */
+    M17LinkSetupFrame getCurrentLsf()
+    {
+        return currLsf;
+    }
+
+    /**
+     * Update the Link Setup Frame data for the current transmission.
+     * The new LSF data will become active once all the LICH segments of the
+     * previous LSF have been sent.
+     *
+     * @param lsf: new Link Setup Frame to be sent.
+     */
+    void updateLsfData(M17LinkSetupFrame& lsf)
+    {
+        newLsf = lsf;
+        newLsf.updateCrc();
+        updateLsf = true;
+    }
+
 private:
 
     M17ConvolutionalEncoder  encoder;           ///< Convolutional encoder.
-    std::array< lich_t, 6 >  lichSegments;      ///< Encoded LSF chunks for LICH generation.
+    M17LinkSetupFrame        currLsf;           ///< LSF of current transmission.
+    M17LinkSetupFrame        newLsf;            ///< Next LSF to be sent.
     uint8_t                  currentLich;       ///< Index of current LSF chunk.
     uint16_t                 streamFrameNumber; ///< Current frame number.
+    bool                     updateLsf;         ///< LSF data needs update.
 };
 
 }      // namespace M17

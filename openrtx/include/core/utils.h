@@ -1,21 +1,8 @@
-/***************************************************************************
- *   Copyright (C) 2020 - 2025 by Federico Amedeo Izzo IU2NUO,             *
- *                                Niccolò Izzo IU2KIN,                     *
- *                                Silvano Seva IU2KWO                      *
- *                                                                         *
- *   This program is free software; you can redistribute it and/or modify  *
- *   it under the terms of the GNU General Public License as published by  *
- *   the Free Software Foundation; either version 3 of the License, or     *
- *   (at your option) any later version.                                   *
- *                                                                         *
- *   This program is distributed in the hope that it will be useful,       *
- *   but WITHOUT ANY WARRANTY; without even the implied warranty of        *
- *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the         *
- *   GNU General Public License for more details.                          *
- *                                                                         *
- *   You should have received a copy of the GNU General Public License     *
- *   along with this program; if not, see <http://www.gnu.org/licenses/>   *
- ***************************************************************************/
+/*
+ * SPDX-FileCopyrightText: Copyright 2020-2026 OpenRTX Contributors
+ * 
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
 
 #ifndef UTILS_H
 #define UTILS_H
@@ -89,6 +76,39 @@ uint8_t rssiToSlevel(const rssi_t rssi);
  * @return tone index or 255 if the tone has not been found
  */
 uint8_t ctcssFreqToIndex(const uint16_t freq);
+
+/**
+ * Convert coordinates from decimal value to Q1.23 representation.
+ * The input value should be in decimal degrees multiplied by 1000000
+ *
+ * @param coord: coordinate in decimal degrees
+ * @param unit: value, in degrees, corresponding to 1.0
+ * @return coordinate in Q1.23 format
+ */
+static inline int32_t coordToFixedPoint(const int32_t coord, const uint8_t unit)
+{
+    int64_t tmp = (int64_t)coord;
+    tmp *= ((1 << 23) - 1);
+    tmp /= (unit * 1000000);
+
+    return tmp;
+}
+
+/**
+ * Convert coordinates from Q1.23 representation to decimal value.
+ *
+ * @param value: coordinate in Q1.23 format
+ * @param unit: value, in degrees, corresponding to 1.0
+ * @return coordinate in decimal degrees
+ */
+static inline int32_t fixedPointToCoord(const int32_t value, const uint8_t unit)
+{
+    int64_t tmp = (int64_t)value;
+    tmp *= (unit * 1000000);
+    tmp /= ((1 << 23) - 1);
+
+    return tmp;
+}
 
 #ifdef __cplusplus
 }
