@@ -1,0 +1,87 @@
+/*
+ * SPDX-FileCopyrightText: Copyright 2020-2026 OpenRTX Contributors
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
+
+#include "protocols/horse/HorseFrameDecoder.hpp"
+#include "protocols/horse/ldpc_horse.h"
+#include <cstring>
+
+namespace horse
+{
+
+static uint8_t hammingDistance(uint8_t x, uint8_t y)
+{
+    return __builtin_popcount(x ^ y);
+}
+
+HorseFrameDecoder::HorseFrameDecoder() : lastVoiceFrameNum(0)
+{
+    lsfSrc.fill(0);
+    lsfDst.fill(0);
+}
+
+HorseFrameDecoder::~HorseFrameDecoder()
+{
+}
+
+void HorseFrameDecoder::reset()
+{
+    lsfSrc.fill(0);
+    lsfDst.fill(0);
+    lastVoiceFrameNum = 0;
+}
+
+HorseFrameType HorseFrameDecoder::decodeFrame(const frame_t& frame)
+{
+    uint8_t lsfHd = hammingDistance(frame[0], LSF_SYNC_WORD[0]) + hammingDistance(frame[1], LSF_SYNC_WORD[1]);
+    uint8_t voiceHd = hammingDistance(frame[0], VOICE_SYNC_WORD[0]) + hammingDistance(frame[1], VOICE_SYNC_WORD[1]);
+    uint8_t eotHd = hammingDistance(frame[0], EOT_SYNC_WORD[0]) + hammingDistance(frame[1], EOT_SYNC_WORD[1]);
+
+    if (lsfHd <= 2)
+    {
+        std::copy(frame.begin() + 2, frame.begin() + 8, lsfSrc.begin());
+        std::copy(frame.begin() + 8, frame.begin() + 14, lsfDst.begin());
+        return HorseFrameType::LINK_SETUP;
+    }
+    if (voiceHd <= 2)
+    {
+        if (frame.size() >= 2 + LDPC_VOICE_ENCODED_BYTES)
+        {
+            uint8_t payload[LDPC_VOICE_PAYLOAD_BYTES];
+            ldpc_horse_decode_voice(frame.data() + 2, payload);
+            lastVoiceFrameNum = (static_cast<uint16_t>(payload[0]) << 8) | payload[1];
+        }
+        return HorseFrameType::VOICE;
+    }
+    if (eotHd <= 2)
+        return HorseFrameType::EOT;
+    return HorseFrameType::UNKNOWN;
+}
+
+void HorseFrameDecoder::getLsfCallsigns(call_t& src, call_t& dst)
+{
+    src = lsfSrc;
+    dst = lsfDst;
+}
+
+void HorseFrameDecoder::getVoicePayload(const frame_t& frame, uint8_t* melpe96bits,
+                                         uint8_t* tag32bits, uint16_t* frameNum)
+{
+    if (frame.size() < 2 + LDPC_VOICE_ENCODED_BYTES)
+        return;
+    uint8_t payload[LDPC_VOICE_PAYLOAD_BYTES];
+    ldpc_horse_decode_voice(frame.data() + 2, payload);
+    if (frameNum != nullptr)
+    {
+        *frameNum = (static_cast<uint16_t>(payload[0]) << 8) | payload[1];
+        *frameNum &= 0x7FFF;
+    }
+    if (melpe96bits != nullptr)
+        std::memcpy(melpe96bits, payload + 2, 12);
+    if (tag32bits != nullptr)
+        std::memcpy(tag32bits, payload + 14, 4);
+}
+
+}  // namespace horse

@@ -44,11 +44,12 @@ run_cppcheck() {
     fi
 }
 
-# Run flawfinder analysis
+# Run flawfinder analysis (openrtx, lib, platform/drivers, platform/targets only;
+# full tree fails on platform/mcu/CMSIS vendor headers with non-UTF-8 encoding)
 run_flawfinder() {
     echo -e "${YELLOW}Running flawfinder security analysis...${NC}"
     if command_exists flawfinder; then
-        flawfinder --html --context --minlevel=1 ../ > flawfinder-report.html 2>&1
+        flawfinder --html --context --minlevel=1 ../openrtx ../lib ../platform/drivers ../platform/targets > flawfinder-report.html 2>&1
         echo -e "${GREEN}✅ Flawfinder analysis completed${NC}"
         echo "   HTML report: flawfinder-report.html"
     else

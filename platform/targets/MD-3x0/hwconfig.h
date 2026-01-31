@@ -57,6 +57,9 @@ extern const struct Adc adc1;
 /* Device supports M17 mode */
 #define CONFIG_M17
 
+/* Device supports Horse encrypted voice mode */
+#define CONFIG_HORSE
+
 #ifdef __cplusplus
 }
 #endif

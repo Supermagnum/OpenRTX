@@ -366,6 +366,19 @@ void sdlEngine_run()
 
     printf("Terminating SDL display emulator, goodbye!\n");
 
+    /* Drain pending user events and free their data1 to avoid leaks on exit */
+    {
+        SDL_Event ev;
+        while (SDL_PollEvent(&ev))
+        {
+            if (ev.type == SDL_Screenshot_Event || ev.type == SDL_Backlight_Event)
+            {
+                if (ev.user.data1 != NULL)
+                    free(ev.user.data1);
+            }
+        }
+    }
+
     SDL_DestroyTexture(displayTexture);
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);

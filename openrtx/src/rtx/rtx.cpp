@@ -10,6 +10,7 @@
 #include "rtx/rtx.h"
 #include "rtx/OpMode_FM.hpp"
 #include "rtx/OpMode_M17.hpp"
+#include "rtx/OpMode_Horse.hpp"
 
 static pthread_mutex_t   *cfgMutex;     // Mutex for incoming config messages
 static const rtxStatus_t *newCnf;       // Pointer for incoming config messages
@@ -22,6 +23,9 @@ static OpMode     noMode;               // Empty opMode handler for opmode::NONE
 static OpMode_FM  fmMode;               // FM mode handler
 #ifdef CONFIG_M17
 static OpMode_M17 m17Mode;              // M17 mode handler
+#endif
+#ifdef CONFIG_HORSE
+static OpMode_Horse horseMode;          // Horse mode handler
 #endif
 
 
@@ -52,6 +56,9 @@ void rtx_init(pthread_mutex_t *m)
     rtxStatus.M17_dst[0]    = '\0';
     rtxStatus.M17_link[0]   = '\0';
     rtxStatus.M17_refl[0]   = '\0';
+    rtxStatus.horseLsfOk     = false;
+    rtxStatus.horse_dst[0]   = '\0';
+    rtxStatus.horse_src[0]   = '\0';
     currMode = &noMode;
 
     /*
@@ -139,10 +146,13 @@ void rtx_task()
 
             switch(rtxStatus.opMode)
             {
-                case OPMODE_NONE: currMode = &noMode;  break;
-                case OPMODE_FM:   currMode = &fmMode;  break;
+                case OPMODE_NONE:  currMode = &noMode;   break;
+                case OPMODE_FM:   currMode = &fmMode;   break;
                 #ifdef CONFIG_M17
-                case OPMODE_M17:  currMode = &m17Mode; break;
+                case OPMODE_M17:  currMode = &m17Mode;  break;
+                #endif
+                #ifdef CONFIG_HORSE
+                case OPMODE_HORSE: currMode = &horseMode; break;
                 #endif
                 default:   currMode = &noMode;
             }

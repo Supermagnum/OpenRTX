@@ -11,8 +11,13 @@
 #include <string.h>
 #include "SDL2/SDL.h"
 
+#ifdef CONFIG_READLINE
 #include "readline/readline.h"
 #include "readline/history.h"
+#else
+#include <stdio.h>
+#define BUFSZ 256
+#endif
 
 #include "emulator.h"
 #include "sdl_engine.h"
@@ -249,11 +254,16 @@ static int screenshot(void *_self, int _argc, char **_argv)
     SDL_Event e;
     SDL_zero(e);
     e.type = SDL_Screenshot_Event;
-    e.user.data1 = malloc(len+1);
-    memset(e.user.data1, 0, len+1);
-    strcpy(e.user.data1, filename);
-
-    return SDL_PushEvent(&e) == 1 ? SH_CONTINUE : SH_ERR;
+    e.user.data1 = malloc(len + 1);
+    if (e.user.data1 == NULL)
+        return SH_ERR;
+    snprintf((char *)e.user.data1, (size_t)(len + 1), "%s", filename);
+    if (SDL_PushEvent(&e) != 1)
+    {
+        free(e.user.data1);
+        return SH_ERR;
+    }
+    return SH_CONTINUE;
 }
 
 static int setFloat(void *_self, int _argc, char **_argv)
@@ -468,6 +478,7 @@ void *startCLIMenu(void *arg)
     (void) arg;
 
     printf("\n\n");
+#ifdef CONFIG_READLINE
     char *histfile = ".emulatorsh_history";
     shell_help(NULL, 0, NULL);
     int ret = SH_CONTINUE;
@@ -501,31 +512,78 @@ void *startCLIMenu(void *arg)
             case SH_WHAT:
                 printf("?\n(type h or help for help)\n");
                 ret = SH_CONTINUE;
-                /*printf("\n>");*/
                 break;
 
             case SH_CONTINUE:
-                /*printf("\n>");*/
                 break;
 
             case SH_EXIT_OK:
-                //normal quit
                 emulator_state.powerOff = true;
                 break;
 
             case SH_ERR:
-                //error
                 printf("Error running that command\n");
                 ret = SH_CONTINUE;
                 break;
         }
 
-        free(r); //free the string allocated by readline
+        free(r);
     }
     while((ret == SH_CONTINUE) && (emulator_state.powerOff == false));
 
     fflush(stdout);
     write_history(histfile);
+#else
+    static char linebuf[BUFSZ];
+    shell_help(NULL, 0, NULL);
+    int ret = SH_CONTINUE;
+
+    do
+    {
+        printf("> ");
+        fflush(stdout);
+        if(fgets(linebuf, (int)sizeof(linebuf), stdin) == NULL)
+        {
+            ret = SH_EXIT_OK;
+            break;
+        }
+        size_t len = strlen(linebuf);
+        if(len > 0 && linebuf[len - 1] == '\n')
+        {
+            linebuf[len - 1] = '\0';
+            len--;
+        }
+        if(len > 0)
+            ret = process_line(linebuf);
+
+        switch(ret)
+        {
+            default:
+                fflush(stdout);
+                break;
+
+            case SH_WHAT:
+                printf("?\n(type h or help for help)\n");
+                ret = SH_CONTINUE;
+                break;
+
+            case SH_CONTINUE:
+                break;
+
+            case SH_EXIT_OK:
+                emulator_state.powerOff = true;
+                break;
+
+            case SH_ERR:
+                printf("Error running that command\n");
+                ret = SH_CONTINUE;
+                break;
+        }
+    }
+    while((ret == SH_CONTINUE) && (emulator_state.powerOff == false));
+
+    fflush(stdout);
+#endif
 
     return NULL;
 }

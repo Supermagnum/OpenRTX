@@ -174,6 +174,14 @@ void radio_setOpmode(const enum opmode mode)
             _setBandwidth(BW_25);       // Set bandwidth to 25kHz for proper deviation
             break;
 
+        case OPMODE_HORSE:
+            gpio_clearPin(DMR_SW);
+            gpio_setPin(FM_SW);
+            C5000.fmMode();
+            C5000.setInputGain(-3);
+            _setBandwidth(BW_12_5);     // 12.5kHz channel for horse
+            break;
+
         default:
             break;
     }

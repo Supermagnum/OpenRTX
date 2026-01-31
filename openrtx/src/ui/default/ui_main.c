@@ -187,6 +187,31 @@ void _ui_drawModeInfo(ui_state_t* ui_state)
             break;
         }
         #endif
+        #ifdef CONFIG_HORSE
+        case OPMODE_HORSE:
+        {
+            rtxStatus_t rtxStatus = rtx_getCurrentStatus();
+            if(rtxStatus.horseLsfOk)
+            {
+                gfx_drawSymbol(layout.line2_pos, layout.line2_symbol_size, TEXT_ALIGN_LEFT,
+                               color_white, SYMBOL_CALL_RECEIVED);
+                gfx_print(layout.line2_pos, layout.line2_font, TEXT_ALIGN_CENTER,
+                          color_white, "%s", rtxStatus.horse_dst);
+                gfx_drawSymbol(layout.line1_pos, layout.line1_symbol_size, TEXT_ALIGN_LEFT,
+                               color_white, SYMBOL_CALL_MADE);
+                gfx_print(layout.line1_pos, layout.line2_font, TEXT_ALIGN_CENTER,
+                          color_white, "%s", rtxStatus.horse_src);
+            }
+            else
+            {
+                const char *dst = strnlen(rtxStatus.destination_address, 10) == 0
+                    ? currentLanguage->broadcast : rtxStatus.destination_address;
+                gfx_print(layout.line2_pos, layout.line2_font, TEXT_ALIGN_CENTER,
+                          color_white, "Horse #%s", dst);
+            }
+            break;
+        }
+        #endif
     }
 }
 
@@ -308,6 +333,17 @@ void _ui_drawMainBottom()
                                 true);
             break;
         #endif
+        #ifdef CONFIG_HORSE
+        case OPMODE_HORSE:
+            gfx_drawSmeterLevel(meter_pos,
+                                meter_width,
+                                meter_height,
+                                rssi,
+                                mic_level,
+                                volume,
+                                true);
+            break;
+        #endif
     }
 }
 
@@ -317,10 +353,12 @@ void _ui_drawMainVFO(ui_state_t* ui_state)
     _ui_drawMainTop(ui_state);
     _ui_drawModeInfo(ui_state);
 
-    #ifdef CONFIG_M17
-    // Show VFO frequency if the OpMode is not M17 or there is no valid LSF data
+    #if defined(CONFIG_M17) || defined(CONFIG_HORSE)
     rtxStatus_t status = rtx_getCurrentStatus();
-    if((status.opMode != OPMODE_M17) || (status.lsfOk == false))
+    bool showFreq = (status.opMode != OPMODE_M17 && status.opMode != OPMODE_HORSE)
+        || (status.opMode == OPMODE_M17 && status.lsfOk == false)
+        || (status.opMode == OPMODE_HORSE && status.horseLsfOk == false);
+    if(showFreq)
     #endif
         _ui_drawFrequency();
 
@@ -341,10 +379,12 @@ void _ui_drawMainMEM(ui_state_t* ui_state)
     _ui_drawMainTop(ui_state);
     _ui_drawModeInfo(ui_state);
 
-    #ifdef CONFIG_M17
-    // Show channel data if the OpMode is not M17 or there is no valid LSF data
+    #if defined(CONFIG_M17) || defined(CONFIG_HORSE)
     rtxStatus_t status = rtx_getCurrentStatus();
-    if((status.opMode != OPMODE_M17) || (status.lsfOk == false))
+    bool showChFreq = (status.opMode != OPMODE_M17 && status.opMode != OPMODE_HORSE)
+        || (status.opMode == OPMODE_M17 && status.lsfOk == false)
+        || (status.opMode == OPMODE_HORSE && status.horseLsfOk == false);
+    if(showChFreq)
     #endif
     {
         _ui_drawBankChannel();

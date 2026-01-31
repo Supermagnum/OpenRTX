@@ -202,6 +202,30 @@ typedef struct
 __attribute__((packed)) m17Contact_t; // 6B
 
 
+/******************************************************************************
+ *                         HORSE MODE                                         *
+ ******************************************************************************/
+
+/**
+ * Data structure containing all and only the information for Horse channels.
+ */
+typedef struct
+{
+    uint8_t  rxCan : 4,         //< Channel id for RX
+             txCan : 4;         //< Channel id for TX
+    uint16_t contact_index;     //< Index to contact (public key)
+}
+__attribute__((packed)) horseInfo_t; // 3B
+
+/**
+ * Data structure describing Horse-specific contact fields (callsign, public key).
+ */
+typedef struct
+{
+    uint8_t address[6];         //< Encoded callsign, same as M17 base-40
+}
+__attribute__((packed)) horseContact_t; // 6B
+
 
 /******************************************************************************
  *                         COMMON DATA STRUCTURES                             *
@@ -245,9 +269,10 @@ typedef struct
 
     union
     {
-        fmInfo_t  fm;              //< Information block for FM channels
-        dmrInfo_t dmr;             //< Information block for DMR channels
-        m17Info_t m17;             //< Information block for M17 channels
+        fmInfo_t    fm;            //< Information block for FM channels
+        dmrInfo_t   dmr;           //< Information block for DMR channels
+        m17Info_t   m17;           //< Information block for M17 channels
+        horseInfo_t horse;         //< Information block for Horse channels
     };
 }
 __attribute__((packed)) channel_t; // 59B
@@ -262,8 +287,9 @@ typedef struct
 
     union
     {
-        dmrContact_t  dmr;      //< DMR specific contact info
-        m17Contact_t  m17;      //< M17 specific contact info
+        dmrContact_t   dmr;     //< DMR specific contact info
+        m17Contact_t  m17;     //< M17 specific contact info
+        horseContact_t horse;  //< Horse specific contact info
     }
     info; // 6B
 }

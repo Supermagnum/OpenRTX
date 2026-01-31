@@ -69,6 +69,20 @@ openrtx_src = ['openrtx/src/core/state.c',
                'openrtx/src/protocols/M17/M17FrameDecoder.cpp',
                'openrtx/src/protocols/M17/M17LinkSetupFrame.cpp']
 
+horse_src = ['openrtx/src/protocols/horse/HorseFrameEncoder.cpp',
+             'openrtx/src/protocols/horse/HorseFrameDecoder.cpp',
+             'openrtx/src/protocols/horse/HorseModulator.cpp',
+             'openrtx/src/protocols/horse/HorseDemodulator.cpp',
+             'openrtx/src/protocols/horse/melpe_horse.c',
+             'openrtx/src/protocols/horse/ldpc_horse.c',
+             'openrtx/src/protocols/horse/horse_crypto.c',
+             'openrtx/src/core/horse_codec.c',
+             'openrtx/src/rtx/OpMode_Horse.cpp']
+
+horse_frame_test_src = ['openrtx/src/protocols/horse/HorseFrameEncoder.cpp',
+                        'openrtx/src/protocols/horse/HorseFrameDecoder.cpp',
+                        'openrtx/src/protocols/horse/ldpc_horse.c']
+
 openrtx_inc = ['openrtx/include', 'platform']
 
 ##
@@ -313,12 +327,16 @@ linux_inc = ['platform/targets/linux',
 
 linux_def = {'PLATFORM_LINUX': '', 'VP_USE_FILESYSTEM':''}
 
-sdl_dep     = dependency('SDL2',     required: false)
-threads_dep = dependency('threads',  required: false)
-linux_src  += openrtx_src
-linux_inc  += openrtx_inc
-linux_def  += openrtx_def
-linux_def  += {'sniprintf':'snprintf', 'vsniprintf':'vsnprintf'}
+sdl_dep      = dependency('SDL2',      required: false)
+threads_dep  = dependency('threads',   required: false)
+readline_dep = dependency('readline',  required: false)
+linux_src   += openrtx_src
+linux_inc   += openrtx_inc
+linux_def   += openrtx_def
+linux_def   += {'sniprintf':'snprintf', 'vsniprintf':'vsnprintf'}
+if readline_dep.found()
+  linux_def += {'CONFIG_READLINE': ''}
+endif
 
 #
 # Standard UI
@@ -337,7 +355,10 @@ linux_mod17_def = linux_def + {'CONFIG_SCREEN_WIDTH': '128', 'CONFIG_SCREEN_HEIG
 
 linux_c_args   = ['-ffunction-sections', '-fdata-sections', '-std=gnu17']
 linux_cpp_args = ['-ffunction-sections', '-fdata-sections', '-std=c++14']
-linux_l_args   = ['-lm', '-lreadline']
+linux_l_args   = ['-lm']
+if readline_dep.found()
+  linux_l_args += '-lreadline'
+endif
 
 # MacOS Clang linker uses -deadstrip instead of --gc-sections
 if build_machine.system() == 'darwin'
@@ -377,9 +398,9 @@ md3x0_src = ['platform/drivers/CPS/cps_io_native_MD3x0.c',
              'platform/targets/MD-3x0/hwconfig.c']
 
 md3x0_inc = ['platform/targets/MD-3x0']
-md3x0_def = {'PLATFORM_MD3x0': '', 'timegm': 'mktime'}
+md3x0_def = {'PLATFORM_MD3x0': '', 'CONFIG_HORSE': '', 'timegm': 'mktime'}
 
-md3x0_src += openrtx_src + stm32f405_src + ui_src_default + mdx_src
+md3x0_src += openrtx_src + horse_src + stm32f405_src + ui_src_default + mdx_src
 md3x0_inc += openrtx_inc + stm32f405_inc
 md3x0_def += openrtx_def + stm32f405_def
 
@@ -680,10 +701,14 @@ foreach k, v : dm1701_def
   endif
 endforeach
 
+linux_deps = [sdl_dep, threads_dep, codec2_dep]
+if readline_dep.found()
+  linux_deps += readline_dep
+endif
 linux_opts = {
   'sources'            : linux_default_src,
   'include_directories': linux_inc,
-  'dependencies'       : [sdl_dep, threads_dep, codec2_dep],
+  'dependencies'       : linux_deps,
   'c_args'             : linux_c_args,
   'cpp_args'           : linux_cpp_args,
   'link_args'          : linux_l_args
@@ -692,7 +717,7 @@ linux_opts = {
 linux_small_opts = {
     'sources'            : linux_default_src,
     'include_directories': linux_inc,
-    'dependencies'       : [sdl_dep, threads_dep, codec2_dep],
+    'dependencies'       : linux_deps,
     'c_args'             : linux_small_c_args,
     'cpp_args'           : linux_small_cpp_args,
     'link_args'          : linux_l_args
@@ -701,7 +726,7 @@ linux_small_opts = {
 linux_mod17_opts = {
     'sources'            : linux_mod17_src,
     'include_directories': linux_inc,
-    'dependencies'       : [sdl_dep, threads_dep, codec2_dep],
+    'dependencies'       : linux_deps,
     'c_args'             : linux_mod17_c_args,
     'cpp_args'           : linux_mod17_cpp_args,
     'link_args'          : linux_l_args
@@ -1045,7 +1070,7 @@ endforeach
 unit_test_opts = {'c_args'             : linux_c_args,
                   'cpp_args'           : linux_cpp_args,
                   'include_directories': linux_inc,
-                  'dependencies'       : [sdl_dep, threads_dep, codec2_dep],
+                  'dependencies'       : linux_deps,
                   'link_args'          : linux_l_args}
 
 unit_test_src = linux_src + ui_src_default
@@ -1090,6 +1115,13 @@ minmea_conversion_test = executable('minmea_conversion_test',
                                      sources : unit_test_src + ['tests/unit/convert_minmea_coord.c'],
                                      kwargs  : unit_test_opts)
 
+horse_frame_test = executable('horse_frame_test',
+                              sources : horse_frame_test_src + ['tests/unit/horse_frame.cpp'],
+                              include_directories : openrtx_inc,
+                              c_args : linux_c_args,
+                              cpp_args : linux_cpp_args,
+                              link_args : linux_l_args)
+
 test('M17 Golay Unit Test',   m17_golay_test)
 test('M17 Viterbi Unit Test', m17_viterbi_test)
 ## test('M17 Demodulator Test',  m17_demodulator_test) # Skipped for now as this test no longer works after an M17 refactor
@@ -1100,3 +1132,4 @@ test('Codeplug Test',         cps_test)
 ## test('Sine Test',             sine_test)
 ## test('Voice Prompts Test',    vp_test) # Skipped for now as this test no longer works
 test('minmea conversion Test', minmea_conversion_test)
+test('Horse Frame Unit Test',  horse_frame_test)

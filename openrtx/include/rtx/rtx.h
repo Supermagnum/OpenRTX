@@ -52,6 +52,10 @@ typedef struct
     char     M17_src[10];              /**  M17 LSF source             */
     char     M17_link[10];             /**  M17 LSF traffic originator */
     char     M17_refl[10];             /**  M17 LSF reflector module   */
+
+    bool     horseLsfOk;               /**  Horse LSF is valid          */
+    char     horse_dst[10];            /**  Horse LSF destination      */
+    char     horse_src[10];            /**  Horse LSF source           */
 }
 rtxStatus_t;
 
@@ -69,10 +73,11 @@ enum bandwidth
  */
 enum opmode
 {
-    OPMODE_NONE = 0,        /**< No opMode selected */
-    OPMODE_FM   = 1,        /**< Analog FM          */
-    OPMODE_DMR  = 2,        /**< DMR                */
-    OPMODE_M17  = 3         /**< M17                */
+    OPMODE_NONE  = 0,       /**< No opMode selected */
+    OPMODE_FM    = 1,       /**< Analog FM          */
+    OPMODE_DMR   = 2,       /**< DMR                */
+    OPMODE_M17   = 3,       /**< M17                */
+    OPMODE_HORSE = 4        /**< Horse encrypted    */
 };
 
 /**
