@@ -50,6 +50,17 @@ The following radios are currently supported for use with this digital mode:
 
 To make the digital mode work, some modding is required: Refer to the [dedicated page](https://openrtx.org/#/M17/m17?id=hardware-modifications) on our website for the details on that.
 
+## Additional experimental features in this fork
+
+The `Supermagnum/OpenRTX` fork adds a small number of **experimental** features on top of upstream OpenRTX:
+
+- An encrypted digital voice mode called **Horse**, implemented for the TYT MD-3x0 family and integrated as an additional operating mode alongside M17. The implementation lives primarily under `openrtx/include/protocols/horse/` and `openrtx/src/protocols/horse/`, with a corresponding unit test in `tests/unit/horse_frame.cpp`.
+- Additional tooling and scripts for security and reliability analysis, including:
+  - `run_security_analysis.sh` for cppcheck, flawfinder and pattern-based analysis (writes reports into `security_reports/`)
+  - helper scripts in `scripts/` such as `ANALYSIS_TOOLS.md`, `run_flawfinder.sh`, and `run_valgrind.sh` documenting and automating analysis workflows
+
+These features are intended for experimentation and research only and may change or be removed without notice.
+
 ## Disclaimer
 
 This project was created for research and amateur radio use only, we are not

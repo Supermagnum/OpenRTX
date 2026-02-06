@@ -13,12 +13,14 @@ This document outlines the comprehensive security framework implemented for the 
 - **Configuration:** Full analysis with all checks enabled
 - **Output:** XML report with detailed findings
 - **Usage:** `cppcheck --enable=all --xml --xml-version=2 .`
+ - **Notes:** See `scripts/ANALYSIS_TOOLS.md` for the recommended invocation used in this repository.
 
 #### Flawfinder
 - **Purpose:** Security-focused static analysis
 - **Configuration:** HTML output with context
 - **Output:** Security vulnerability report
 - **Usage:** `flawfinder --html --context --minlevel=1 .`
+ - **Notes:** The helper script `scripts/run_flawfinder.sh` runs flawfinder on the main OpenRTX code (excluding problematic vendor headers) and writes an HTML report.
 
 #### Custom Pattern Analysis
 - **Purpose:** Detect specific security patterns
@@ -50,6 +52,7 @@ This document outlines the comprehensive security framework implemented for the 
 - **Detects:** Memory leaks, use-after-free, double-free
 - **Configuration:** Full leak check with origin tracking
 - **Usage:** `valgrind --leak-check=full --show-leak-kinds=all`
+ - **Notes:** `scripts/run_valgrind.sh` runs Valgrind against the Linux emulator binary (`openrtx_linux`) once it has been built.
 
 ## Security Analysis Scripts
 
@@ -72,6 +75,17 @@ This document outlines the comprehensive security framework implemented for the 
 - ThreadSanitizer testing
 - Valgrind analysis
 - Runtime security reporting
+
+### 3. Helper and convenience scripts
+
+- **File:** `scripts/run_flawfinder.sh`  
+  **Purpose:** Run Flawfinder with the project’s recommended arguments and output locations.
+
+- **File:** `scripts/run_valgrind.sh`  
+  **Purpose:** Run Valgrind Memcheck on the Linux emulator (`openrtx_linux`) with leak checking enabled.
+
+- **File:** `scripts/ANALYSIS_TOOLS.md`  
+  **Purpose:** Human-readable overview of recommended static, dynamic and fuzzing tools (including AFL++ guidelines) and how to apply them to OpenRTX.
 
 ## Security Findings Summary
 
