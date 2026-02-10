@@ -54,8 +54,10 @@ To make the digital mode work, some modding is required: Refer to the [dedicated
 
 The `Supermagnum/OpenRTX` fork adds a small number of **experimental** features on top of upstream OpenRTX:
 
-- An encrypted digital voice mode called **Horse**, implemented for the TYT MD-3x0 family and integrated as an additional operating mode alongside M17. The implementation lives primarily under `openrtx/include/protocols/horse/` and `openrtx/src/protocols/horse/`, with a corresponding unit test in `tests/unit/horse_frame.cpp`.
-- For protocol, modulation and key-handling details see the dedicated [horse documentation](./horse.md).
+- An encrypted digital voice mode called **Horse**, implemented for the TYT MD-3x0 family and integrated as an additional operating mode alongside M17. The implementation lives primarily under `openrtx/include/protocols/horse/` and `openrtx/src/protocols/horse/`, with unit tests in `tests/unit/horse_frame.cpp` and `tests/unit/horse_crypto.cpp`.
+- Horse supports both **encrypted** (XChaCha20 + X25519 ECDH) and **signed** (Ed25519) transmission modes.
+- Key provisioning tool `scripts/horse_provision.py` generates Ed25519/X25519 identities and provisions them to radios over USB.
+- For protocol, modulation, cryptography and key-handling details see the dedicated [horse documentation](./horse.md).
 - Additional tooling and scripts for security and reliability analysis, including:
   - `run_security_analysis.sh` for cppcheck, flawfinder and pattern-based analysis (writes reports into `security_reports/`)
   - helper scripts in `scripts/` such as `ANALYSIS_TOOLS.md`, `run_flawfinder.sh`, and `run_valgrind.sh` documenting and automating analysis workflows

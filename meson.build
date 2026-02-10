@@ -119,6 +119,9 @@ openrtx_inc += ['lib/minmea/include']
 # QDEC, a very simple, header only, quadrature decoding library
 openrtx_inc += ['lib/qdec/include']
 
+# libsodium (optional, used for Horse crypto on supported platforms)
+sodium_dep = dependency('libsodium', required: false)
+
 # CODEC2, open source speech codec, compile from source on embedded
 codec2_proj = subproject('codec2')
 if meson.is_cross_build()
@@ -705,6 +708,11 @@ linux_deps = [sdl_dep, threads_dep, codec2_dep]
 if readline_dep.found()
   linux_deps += readline_dep
 endif
+if sodium_dep.found()
+  linux_deps += sodium_dep
+  linux_c_args += '-DHAVE_LIBSODIUM'
+  linux_cpp_args += '-DHAVE_LIBSODIUM'
+endif
 linux_opts = {
   'sources'            : linux_default_src,
   'include_directories': linux_inc,
@@ -1122,6 +1130,16 @@ horse_frame_test = executable('horse_frame_test',
                               cpp_args : linux_cpp_args,
                               link_args : linux_l_args)
 
+horse_crypto_test_src = ['openrtx/src/protocols/horse/horse_crypto.c',
+                        'tests/unit/crypto_utils_stub.c']
+horse_crypto_test = executable('horse_crypto_test',
+                               sources : horse_crypto_test_src + ['tests/unit/horse_crypto.cpp'],
+                               include_directories : openrtx_inc,
+                               dependencies : linux_deps,
+                               c_args : linux_c_args,
+                               cpp_args : linux_cpp_args,
+                               link_args : linux_l_args)
+
 test('M17 Golay Unit Test',   m17_golay_test)
 test('M17 Viterbi Unit Test', m17_viterbi_test)
 ## test('M17 Demodulator Test',  m17_demodulator_test) # Skipped for now as this test no longer works after an M17 refactor
@@ -1133,3 +1151,4 @@ test('Codeplug Test',         cps_test)
 ## test('Voice Prompts Test',    vp_test) # Skipped for now as this test no longer works
 test('minmea conversion Test', minmea_conversion_test)
 test('Horse Frame Unit Test',  horse_frame_test)
+test('Horse Crypto Unit Test', horse_crypto_test)

@@ -1,0 +1,320 @@
+#!/usr/bin/env python3
+#
+# SPDX-FileCopyrightText: Copyright 2020-2026 OpenRTX Contributors
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Horse identity provisioning tool.
+#
+# Generates Ed25519/X25519 identity keypairs using libsodium (via PyNaCl),
+# stores them in the Linux kernel keyring, and can provision them to a radio
+# over USB-CDC serial.
+#
+
+import argparse
+import json
+import os
+import struct
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+try:
+    import nacl.public
+    import nacl.signing
+    import serial
+    import serial.tools.list_ports
+except ImportError as e:
+    print(f"Error: Missing required dependency: {e.name}", file=sys.stderr)
+    print("Install with: pip install pynacl pyserial", file=sys.stderr)
+    sys.exit(1)
+
+
+# Protocol constants (matches firmware expectations).
+PROTOCOL_VERSION = 1
+MSG_HELLO = 0x01
+MSG_HELLO_ACK = 0x02
+MSG_SEND_IDENTITY = 0x03
+MSG_CONFIRM = 0x04
+MSG_ERROR = 0xFF
+
+
+def keyctl_add(keyring_type, description, payload):
+    """Add a key to the kernel keyring using keyctl."""
+    try:
+        proc = subprocess.run(
+            ["keyctl", "add", keyring_type, description, payload],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        return proc.stdout.strip()
+    except subprocess.CalledProcessError as e:
+        raise RuntimeError(f"keyctl add failed: {e.stderr}") from e
+    except FileNotFoundError:
+        raise RuntimeError("keyctl not found; install keyutils package") from None
+
+
+def keyctl_read(key_id):
+    """Read a key from the kernel keyring."""
+    try:
+        proc = subprocess.run(
+            ["keyctl", "read", key_id],
+            check=True,
+            capture_output=True,
+            text=False,
+        )
+        return proc.stdout
+    except subprocess.CalledProcessError as e:
+        raise RuntimeError(f"keyctl read failed: {e.stderr}") from e
+
+
+def keyctl_list(keyring):
+    """List keys in a keyring."""
+    try:
+        proc = subprocess.run(
+            ["keyctl", "list", keyring],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        return proc.stdout.strip().split("\n") if proc.stdout.strip() else []
+    except subprocess.CalledProcessError:
+        return []
+
+
+def generate_identity(label):
+    """Generate a new Horse identity (Ed25519 + X25519 keypair)."""
+    signing_key = nacl.signing.SigningKey.generate()
+    verify_key = signing_key.verify_key
+
+    ed25519_pk = bytes(verify_key)
+    ed25519_sk = bytes(signing_key)
+
+    x25519_sk = nacl.public.PrivateKey.generate()
+    x25519_pk = bytes(x25519_sk.public_key)
+
+    identity = {
+        "version": 1,
+        "label": label,
+        "ed25519_pk": ed25519_pk.hex(),
+        "ed25519_sk": ed25519_sk.hex(),
+        "x25519_pk": x25519_pk.hex(),
+        "x25519_sk": x25519_sk.hex(),
+    }
+
+    return identity
+
+
+def pack_identity_binary(identity):
+    """Pack identity into binary format matching horse_identity_keys_t."""
+    ed25519_pk = bytes.fromhex(identity["ed25519_pk"])
+    ed25519_sk = bytes.fromhex(identity["ed25519_sk"])
+    x25519_pk = bytes.fromhex(identity["x25519_pk"])
+    x25519_sk = bytes.fromhex(identity["x25519_sk"])
+
+    return struct.pack(
+        "<B3s32s64s32s32s",
+        1,  # version
+        b"\x00\x00\x00",  # reserved
+        ed25519_pk,
+        ed25519_sk,
+        x25519_pk,
+        x25519_sk,
+    )
+
+
+def store_in_keyring(identity, keyring="user"):
+    """Store identity in kernel keyring."""
+    label = identity["label"]
+    description = f"openrtx:horse:{label}"
+    payload = json.dumps(identity).encode("utf-8")
+
+    key_id = keyctl_add(keyring, description, payload.hex())
+    print(f"Stored identity '{label}' in keyring as key ID {key_id}")
+    return key_id
+
+
+def load_from_keyring(label, keyring="user"):
+    """Load identity from kernel keyring."""
+    description = f"openrtx:horse:{label}"
+    keyring_id = f"@{keyring}"
+
+    keys = keyctl_list(keyring_id)
+    for key_line in keys:
+        if description in key_line:
+            key_id = key_line.split(":")[0]
+            payload_hex = keyctl_read(key_id)
+            payload = json.loads(payload_hex.decode("utf-8"))
+            return payload
+
+    raise ValueError(f"Identity '{label}' not found in keyring")
+
+
+def list_identities(keyring="user"):
+    """List all Horse identities in keyring."""
+    keyring_id = f"@{keyring}"
+    keys = keyctl_list(keyring_id)
+    identities = []
+
+    for key_line in keys:
+        if "openrtx:horse:" in key_line:
+            parts = key_line.split(":")
+            if len(parts) >= 3:
+                label = ":".join(parts[2:])
+                identities.append(label)
+
+    return identities
+
+
+def send_provisioning_message(ser, msg_type, payload=b""):
+    """Send a provisioning message over serial."""
+    header = struct.pack("<BBH", PROTOCOL_VERSION, msg_type, len(payload))
+    ser.write(header)
+    if payload:
+        ser.write(payload)
+    ser.flush()
+
+
+def recv_provisioning_message(ser, timeout=5.0):
+    """Receive a provisioning message from serial."""
+    ser.timeout = timeout
+    header = ser.read(4)
+    if len(header) != 4:
+        return None, None
+
+    version, msg_type, payload_len = struct.unpack("<BBH", header)
+    if version != PROTOCOL_VERSION:
+        return None, None
+
+    payload = ser.read(payload_len) if payload_len > 0 else b""
+    return msg_type, payload
+
+
+def provision_to_radio(identity, port, baudrate=115200):
+    """Provision identity to radio over USB-CDC."""
+    print(f"Connecting to {port} at {baudrate} baud...")
+    try:
+        ser = serial.Serial(port, baudrate, timeout=1.0)
+    except serial.SerialException as e:
+        print(f"Error opening serial port: {e}", file=sys.stderr)
+        return False
+
+    try:
+        print("Sending HELLO...")
+        send_provisioning_message(ser, MSG_HELLO)
+
+        msg_type, payload = recv_provisioning_message(ser, timeout=2.0)
+        if msg_type != MSG_HELLO_ACK:
+            print(f"Error: Radio did not respond with HELLO_ACK (got {msg_type})", file=sys.stderr)
+            return False
+
+        print("Radio acknowledged. Sending identity...")
+        identity_bin = pack_identity_binary(identity)
+        send_provisioning_message(ser, MSG_SEND_IDENTITY, identity_bin)
+
+        msg_type, payload = recv_provisioning_message(ser, timeout=5.0)
+        if msg_type == MSG_CONFIRM:
+            print("Radio confirmed identity provisioning.")
+            if payload:
+                fingerprint = payload[:32].hex() if len(payload) >= 32 else payload.hex()
+                print(f"Radio fingerprint: {fingerprint}")
+            return True
+        elif msg_type == MSG_ERROR:
+            error_msg = payload.decode("utf-8", errors="ignore") if payload else "unknown error"
+            print(f"Radio reported error: {error_msg}", file=sys.stderr)
+            return False
+        else:
+            print(f"Error: Unexpected response from radio (got {msg_type})", file=sys.stderr)
+            return False
+
+    finally:
+        ser.close()
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Horse identity key management and provisioning tool"
+    )
+    parser.add_argument(
+        "--keyring",
+        default="user",
+        help="Kernel keyring to use (default: user)",
+    )
+
+    subparsers = parser.add_subparsers(dest="command", help="Command to execute")
+
+    gen_parser = subparsers.add_parser("generate", help="Generate a new identity")
+    gen_parser.add_argument("label", help="Label/name for the identity (e.g., callsign)")
+
+    list_parser = subparsers.add_parser("list", help="List stored identities")
+
+    show_parser = subparsers.add_parser("show", help="Show identity details")
+    show_parser.add_argument("label", help="Label of identity to show")
+
+    provision_parser = subparsers.add_parser("provision", help="Provision identity to radio")
+    provision_parser.add_argument("label", help="Label of identity to provision")
+    provision_parser.add_argument(
+        "--port",
+        help="Serial port (e.g., /dev/ttyACM0). If not specified, will attempt to auto-detect",
+    )
+    provision_parser.add_argument(
+        "--baudrate", type=int, default=115200, help="Serial baudrate (default: 115200)"
+    )
+
+    args = parser.parse_args()
+
+    if not args.command:
+        parser.print_help()
+        return 1
+
+    try:
+        if args.command == "generate":
+            identity = generate_identity(args.label)
+            key_id = store_in_keyring(identity, args.keyring)
+            print(f"\nGenerated identity '{args.label}':")
+            print(f"  Ed25519 public key: {identity['ed25519_pk']}")
+            print(f"  X25519 public key:  {identity['x25519_pk']}")
+            print(f"  Stored in keyring as key ID: {key_id}")
+
+        elif args.command == "list":
+            identities = list_identities(args.keyring)
+            if identities:
+                print("Stored Horse identities:")
+                for label in identities:
+                    print(f"  - {label}")
+            else:
+                print("No identities found in keyring.")
+
+        elif args.command == "show":
+            identity = load_from_keyring(args.label, args.keyring)
+            print(f"Identity '{args.label}':")
+            print(f"  Ed25519 public key: {identity['ed25519_pk']}")
+            print(f"  X25519 public key:  {identity['x25519_pk']}")
+            print(f"  Ed25519 secret key: {identity['ed25519_sk'][:16]}... (truncated)")
+            print(f"  X25519 secret key:  {identity['x25519_sk'][:16]}... (truncated)")
+
+        elif args.command == "provision":
+            identity = load_from_keyring(args.label, args.keyring)
+
+            port = args.port
+            if not port:
+                ports = serial.tools.list_ports.comports()
+                if not ports:
+                    print("Error: No serial ports found. Specify --port manually.", file=sys.stderr)
+                    return 1
+                port = ports[0].device
+                print(f"Auto-detected port: {port}")
+
+            if not provision_to_radio(identity, port, args.baudrate):
+                return 1
+
+        return 0
+
+    except (ValueError, RuntimeError, KeyError) as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

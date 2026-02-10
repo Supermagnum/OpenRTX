@@ -1,10 +1,15 @@
 ## Horse digital voice mode (experimental)
 
 Horse is an **experimental encrypted digital voice mode** implemented in this fork for the TYT MD‑3x0 family.  
-It reuses large parts of the M17 DSP chain but defines its own framing and (planned) cryptography.
+It reuses large parts of the M17 DSP chain but defines its own framing and cryptography.
 
-> Important: The current implementation contains **stub cryptography** only.  
-> It does not provide real confidentiality yet and must not be relied on for secure communication.
+> Important: Horse is experimental and under active development.  
+> Cryptographic implementations use libsodium where available (Linux builds), but embedded targets may use fallback implementations.  
+> This mode should not be relied upon for production secure communication until fully audited.
+
+### Why is it named "Horse"?
+
+Horse mode uses **4‑FSK (4‑level Frequency Shift Keying)** modulation, so it has "4 legs" — hence the name "Horse".
 
 ---
 
@@ -21,6 +26,23 @@ It reuses large parts of the M17 DSP chain but defines its own framing and (plan
   - `16`‑bit frame counter (`VOICE_FRAME_COUNTER_BITS`)
   - `32`‑bit authentication/tag field (`VOICE_TAG_BITS`)
 
+### Modulation details
+
+Horse uses **4‑FSK (4‑level Frequency Shift Keying)** modulation:
+
+- **Type:** 4‑FSK (4‑level FSK)
+- **Symbol rate:** 4800 symbols/s
+- **Symbol mapping:** Each byte maps to 4 symbols via a lookup table:
+  - `00` → `+1`
+  - `01` → `+3`
+  - `10` → `-1`
+  - `11` → `-3`
+- **Filtering:** Root‑raised cosine (RRC) filter from M17 DSP (`M17::rrc_48k`) at 48 kHz sample rate
+- **RF characteristics:**
+  - Constant‑envelope 4‑FSK (same RF path as M17)
+  - Occupies a standard 12.5 kHz channel
+  - M17‑compatible RF characteristics
+
 Modulation is generated in `HorseModulator`:
 
 - Symbol stream is produced as small integer levels (4‑level symbols) and written into a 48 kHz baseband buffer.
@@ -31,36 +53,48 @@ For Linux builds, baseband samples are written to `/tmp/horse_output.raw` for an
 
 ---
 
-## Encryption and keying (design)
+## Encryption, signing, and keying
 
-Horse is designed to use modern authenticated encryption with per‑session keys:
+Horse uses modern cryptographic primitives with per‑session keys and optional signing:
 
-- **Long‑term identity keys:** stored as GnuPG (OpenPGP) keys on the operator’s workstation.
+- **Long‑term identity keys:** Ed25519/X25519 keypairs stored in `horse_identity_keys_t` structure:
+  - **Ed25519** (32‑byte public, 64‑byte secret): used for digital signatures
+  - **X25519** (32‑byte public, 32‑byte secret): used for key exchange
+  - Keys are provisioned to the radio via `horse_provision.py` and stored encrypted with a user passphrase
 - **Session keys:** 32‑byte symmetric keys generated per call (`HORSE_SESSION_KEY_BYTES`).
-- **Public‑key encryption (ECIES):**
-  - Curve: **BrainpoolP256r1** (elliptic‑curve Diffie‑Hellman).
+- **Public‑key encryption (ECIES‑style):**
+  - Curve: **X25519** (elliptic‑curve Diffie‑Hellman).
   - API in `horse_crypto.h`:
-    - `horse_crypto_ecies_encrypt_session_key(...)`
-    - `horse_crypto_ecies_decrypt_session_key(...)`
-  - Intended flow:
+    - `horse_crypto_ecies_encrypt_session_key(...)` — wraps session key using X25519 ECDH + XChaCha20‑Poly1305
+    - `horse_crypto_ecies_decrypt_session_key(...)` — unwraps session key using recipient's X25519 secret key
+  - Flow:
     1. On transmit, a fresh 32‑byte session key is generated.
-    2. The session key is encrypted to the peer’s public key using ECIES.
-    3. The resulting ephemeral public key + ciphertext + tag are carried in the Horse link setup signalling.
-- **Voice encryption (ChaCha20‑Poly1305):**
+    2. An ephemeral X25519 keypair is generated.
+    3. ECDH is performed: `shared = ephemeral_sk * recipient_x25519_pk`
+    4. AEAD key and nonce are derived from the shared secret via BLAKE2b.
+    5. Session key is encrypted with XChaCha20‑Poly1305 (detached tag).
+    6. Ephemeral public key + ciphertext + tag are carried in Horse link setup signalling.
+- **Voice encryption (XChaCha20 + BLAKE2b MAC):**
   - API in `horse_crypto_voice_encrypt(...)` / `horse_crypto_voice_decrypt(...)`.
-  - Algorithm: **ChaCha20‑Poly1305 AEAD** with a 96‑bit nonce.
-  - A truncated **32‑bit authentication tag** (`HORSE_VOICE_TAG_BYTES`) is carried alongside each encrypted voice frame.
+  - Algorithm: **XChaCha20 stream cipher** with a 96‑bit nonce expanded to 192 bits and a **BLAKE2b‑derived 32‑bit MAC** carried in the `VOICE_TAG_BITS` field.
+- **Digital signatures (Ed25519):**
+  - API in `horse_crypto.h`:
+    - `horse_crypto_sign(...)` — sign data with Ed25519 secret key
+    - `horse_crypto_verify(...)` — verify Ed25519 signature with public key
+  - Use case: Sign voice frames or control messages **without encryption** for authentication and non‑repudiation.
+  - Signatures are 64 bytes (`HORSE_ED25519_SIGNATURE_BYTES`) and can be carried alongside voice payload or in link setup frames.
 - **Passphrase‑based key derivation (Argon2id):**
   - API in `horse_crypto_argon2id_derive(...)`.
-  - Intended use: derive a symmetric key from a user passphrase to unlock stored private keys.
+  - Implemented via libsodium’s `crypto_pwhash` API where available, with a PBKDF2 fallback on platforms that do not ship libsodium.
+  - Used to derive encryption keys from user passphrases for protecting stored private keys.
 
-At present, all of these functions are **placeholders**:
+**Implementation status:**
 
-- ECIES functions do not perform real elliptic‑curve operations yet.
-- Voice encrypt/decrypt currently copy plaintext/ciphertext buffers without applying ChaCha20‑Poly1305.
-- Argon2id‑based derivation is not wired to a real Argon2id implementation.
-
-Until real cryptographic implementations are integrated, Horse behaves effectively as **cleartext over an encrypted signalling design**, suitable only for testing.
+- **ECIES session key wrapping:** Fully implemented with libsodium (X25519 + XChaCha20‑Poly1305) on Linux builds.
+- **Voice encryption:** Fully implemented with libsodium (XChaCha20 + BLAKE2b MAC) on Linux builds.
+- **Digital signatures:** Fully implemented with libsodium (Ed25519) on Linux builds.
+- **Argon2id:** Implemented via libsodium where available, PBKDF2 fallback otherwise.
+- **Embedded targets:** Fall back to placeholder implementations when libsodium is not available (cleartext mode).
 
 ---
 
@@ -94,37 +128,122 @@ The current codeplug layout stores:
 - A **symbolic identity** (name and base‑40 address) for each Horse contact.
 - A **reference** from each Horse channel to a Horse contact via `contact_index`.
 
-### How GnuPG keys fit into this design
+### How identity keys fit into this design
 
-GnuPG/OpenPGP keys are **not stored directly** in the codeplug. Instead, the intended model is:
+Horse identity keys use **Ed25519/X25519** (not GnuPG/OpenPGP directly). The workflow is:
 
-1. Long‑term identity keys are managed by the operator’s normal **GnuPG keyring** on a PC.
-2. An external **codeplug generation tool**:
-   - Reads the operator’s GnuPG public keys.
-   - Extracts or derives the corresponding **elliptic‑curve public keys** suitable for Horse (BrainpoolP256r1).
-   - Writes a compact representation of those public keys and identifiers into a Horse‑specific key store (either as an extension to the codeplug format or an associated blob).
-   - Fills in `contact_t` entries with:
-     - `name` and Horse `address` (base‑40 callsign).
-     - A stable mapping between `contact_index` and the derived Horse public key record.
-3. At runtime, when transmitting to a Horse contact:
-   - The firmware uses `contact_index` to resolve the Horse contact.
-   - The associated Horse public key is retrieved from the key store.
-   - `horse_crypto_ecies_encrypt_session_key(...)` is called with that public key to encrypt the fresh session key.
+1. **Key generation:** Use `horse_provision.py generate <label>` on a desktop system:
+   - Generates Ed25519/X25519 keypairs using libsodium (PyNaCl).
+   - Stores the identity in the Linux kernel keyring for secure intermediate storage.
+2. **Provisioning to radio:** Use `horse_provision.py provision <label> [--port DEVICE]`:
+   - Exports the identity from the kernel keyring.
+   - Sends it to the radio over USB‑CDC serial.
+   - Radio stores it encrypted with a user passphrase (via `horse_crypto_argon2id_derive`).
+3. **At runtime:**
+   - Radio unlocks stored identity keys using the user's passphrase.
+   - For encrypted transmission: uses X25519 public key from contact to wrap session keys.
+   - For signed transmission: uses Ed25519 secret key to sign voice frames or control messages.
+   - Contact public keys are stored in the codeplug or a separate key store, referenced via `contact_index`.
 
-Private keys and passphrases **never live in the radio codeplug**:
+**Key storage model:**
 
-- The radio stores only:
-  - Public keys (or identifiers/indices to them).
-  - Derived session keys in RAM for the lifetime of a call.
-- Private keys remain on the operator’s secure workstation or a separate secure element.
-- If a future implementation adds on‑device private keys, they are intended to be:
-  - Encrypted at rest.
-  - Unlocked via a passphrase processed through `horse_crypto_argon2id_derive(...)` / `horse_crypto_unlock_private_key(...)`.
+- **Desktop side:** Keys stored in Linux kernel keyring (`@user` keyring) with label `openrtx:horse:<label>`.
+- **Radio side:** Private keys are stored encrypted in flash, wrapped with a key derived from the user's Horse passphrase.
+- **Codeplug:** Stores contact public keys (Ed25519/X25519) or references to them, not private keys.
 
-At the current stage of development, the Horse codeplug fields are fully defined, but:
+**Current implementation status:**
 
-- The external toolchain that integrates with GnuPG to populate Horse keys is **not yet implemented**.
-- The firmware uses Horse contacts and channels structurally, but does not yet perform real public‑key encryption.
+- `horse_provision.py` provides full key generation and provisioning workflow.
+- Firmware crypto functions are implemented with libsodium on Linux builds.
+- Embedded targets (STM32/MK22) use fallback implementations until libsodium is ported.
+
+---
+
+## Provisioning and key management tools
+
+This fork includes two tools for Horse key management:
+
+### `horse_provision.py` – identity generation and provisioning
+
+- **Location:** `scripts/horse_provision.py`  
+- **Purpose:** Generate Ed25519/X25519 identities and provision them to radios.
+- **Dependencies:** `pynacl`, `pyserial`, `keyutils` (for kernel keyring access).
+
+**Commands:**
+
+- `generate <label>` — Generate a new Horse identity and store it in the kernel keyring.
+- `list` — List all stored identities in the keyring.
+- `show <label>` — Display identity details (public keys, fingerprints).
+- `provision <label> [--port DEVICE]` — Send identity to radio over USB‑CDC serial.
+
+**Example workflow:**
+
+```bash
+# Generate identity for operator "M0ABC"
+python3 scripts/horse_provision.py generate M0ABC
+
+# List stored identities
+python3 scripts/horse_provision.py list
+
+# Provision identity to radio (auto-detects USB serial port)
+python3 scripts/horse_provision.py provision M0ABC
+
+# Or specify port manually
+python3 scripts/horse_provision.py provision M0ABC --port /dev/ttyACM0
+```
+
+### `horse_keytool.py` – collecting Horse public keys from GnuPG
+
+- **Location:** `scripts/horse_keytool.py`  
+- **Purpose:** Collect public keys for Horse contacts from:
+  - OpenPGP key files (`.asc`, `.pgp`), and
+  - keys already present in the user’s GnuPG keyring (including smartcards / Nitrokey),
+  and write them into a single JSON mapping file for later use by codeplug tooling.
+
+### Inputs
+
+The tool is a command‑line program that accepts one or more `--contact` arguments:
+
+- `--contact NAME:KEYREF`
+  - **NAME**: human‑readable contact name or callsign (e.g. `M0ABC`).
+  - **KEYREF**:
+    - a path to an ASCII‑armored `.asc` or binary `.pgp` key file, **or**
+    - any key reference that `gpg --export` understands (fingerprint, key ID, email, etc.).
+
+Because it uses the standard `gpg` command, keys backed by **Nitrokey** or other smartcards, and keys cached in the **kernel keyring** via GnuPG, are handled transparently as long as GnuPG can export them.
+
+### Output
+
+- `--output / -o PATH` selects an output file, typically `horse_keys.json`.
+- The JSON file has the structure:
+  - `version`: schema version (integer).
+  - `generated_at`: ISO‑8601 UTC timestamp.
+  - `entries`: array of objects, each with:
+    - `name`: contact name/callsign.
+    - `key_ref`: original reference (file path or GnuPG spec).
+    - `source`: `"file"` or `"gpg"`.
+    - `format`: `"ascii"`, `"text"`, or `"binary"`.
+    - `public_key`: the exported public key:
+      - ASCII‑armored text for keys coming from GnuPG or `.asc` files.
+      - Hex‑encoded binary for `.pgp` files.
+
+### Example usage
+
+From the repository root:
+
+```bash
+python3 scripts/horse_keytool.py \
+  --output horse_keys.json \
+  --contact M0ABC:/path/to/m0abc.asc \
+  --contact M0DEF:/path/to/m0def.pgp \
+  --contact M0GHI:0xDEADBEEFCAFEBABE
+```
+
+This command will:
+
+- Read the `.asc` and `.pgp` files directly.
+- Ask `gpg --export --armor 0xDEADBEEFCAFEBABE` for the third contact.
+- Write a combined `horse_keys.json` containing public‑key material for all three Horse contacts.
 
 ---
 
@@ -135,12 +254,29 @@ At the current stage of development, the Horse codeplug fields are fully defined
   - `openrtx/include/protocols/horse/HorseConstants.hpp`
 - **DSP / modulation path:**
   - `openrtx/src/protocols/horse/HorseModulator.cpp`
-- **Cryptography API (stubs):**
-  - `openrtx/include/protocols/horse/horse_crypto.h`
-  - `openrtx/src/protocols/horse/horse_crypto.c`
+- **Cryptography API:**
+  - `openrtx/include/protocols/horse/horse_crypto.h` — API definitions
+  - `openrtx/src/protocols/horse/horse_crypto.c` — Implementation (libsodium on Linux, fallbacks on embedded)
+  - Functions:
+    - `horse_crypto_ecies_encrypt_session_key()` / `horse_crypto_ecies_decrypt_session_key()` — Session key wrapping (X25519 + XChaCha20‑Poly1305)
+    - `horse_crypto_voice_encrypt()` / `horse_crypto_voice_decrypt()` — Voice frame encryption (XChaCha20 + BLAKE2b MAC)
+    - `horse_crypto_sign()` / `horse_crypto_verify()` — Digital signatures (Ed25519)
+    - `horse_crypto_argon2id_derive()` — Passphrase‑based key derivation
 - **Codeplug integration:**
   - `openrtx/include/core/cps.h` (`horseInfo_t`, `horseContact_t`, and `channel_t` / `contact_t` unions)
 
-This document describes the **intended design** of Horse as implemented in this fork.  
-Until the cryptographic primitives are fully implemented and reviewed, Horse must be treated as an experimental feature for development and interoperability testing only.
+## Usage modes
+
+Horse supports two operational modes:
+
+1. **Encrypted mode:** Voice frames are encrypted with XChaCha20 using a session key wrapped via X25519 ECDH. Provides confidentiality and authentication (via MAC).
+
+2. **Signed mode:** Voice frames are sent in cleartext but signed with Ed25519. Provides authentication and non‑repudiation without encryption. Use `horse_crypto_sign()` to sign frames and `horse_crypto_verify()` to verify received signatures.
+
+Both modes can be used independently or combined (encrypted + signed frames).
+
+---
+
+This document describes the **current implementation** of Horse as implemented in this fork.  
+Horse is experimental and under active development. Cryptographic implementations use audited libraries (libsodium) where available, but should be reviewed before production use.
 
