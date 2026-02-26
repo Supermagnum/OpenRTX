@@ -24,6 +24,7 @@ FUZZERS="fuzz_horse_frame fuzz_ldpc_horse fuzz_m17_golay fuzz_m17_callsign fuzz_
 CORPUS_BASE="tests/fuzz/corpus"
 ARTIFACTS_BASE="fuzz_artifacts"
 LOG_DIR="${ARTIFACTS_BASE}/logs"
+DICT_FRAME="tests/fuzz/dict/frame_sync_words.dict"
 mkdir -p "$LOG_DIR"
 
 pids=""
@@ -37,8 +38,17 @@ for name in $FUZZERS; do
     artifacts="${ARTIFACTS_BASE}/${name}"
     log="${LOG_DIR}/${name}.log"
     mkdir -p "$corpus" "$artifacts"
+    extra_args=""
+    case "$name" in
+        fuzz_ldpc_horse)   extra_args="-max_len=92" ;;
+        fuzz_m17_golay)    extra_args="-max_len=4" ;;
+        fuzz_m17_callsign) extra_args="-max_len=15" ;;
+        fuzz_m17_frame)    extra_args="-max_len=240"; [ -f "$DICT_FRAME" ] && extra_args="$extra_args -dict=$DICT_FRAME" ;;
+        fuzz_horse_frame)  extra_args="-max_len=240"; [ -f "$DICT_FRAME" ] && extra_args="$extra_args -dict=$DICT_FRAME" ;;
+        fuzz_minmea)       extra_args="-max_len=256" ;;
+    esac
     echo "Starting $name in background (3h, log=$log)"
-    nohup "$bin" -max_total_time="$DURATION_SEC" -print_final_stats=1 "$corpus" "$artifacts" > "$log" 2>&1 &
+    nohup "$bin" -max_total_time="$DURATION_SEC" -print_final_stats=1 $extra_args "$corpus" "$artifacts" > "$log" 2>&1 &
     pids="$pids $!"
 done
 

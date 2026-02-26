@@ -61,7 +61,7 @@ The `Supermagnum/OpenRTX` fork adds a small number of **experimental** features 
 - Additional tooling and scripts for security and reliability analysis, including:
   - `run_security_analysis.sh` for cppcheck, flawfinder and pattern-based analysis (writes reports into `security_reports/`)
   - helper scripts in `scripts/` such as `ANALYSIS_TOOLS.md`, `run_flawfinder.sh`, and `run_valgrind.sh` documenting and automating analysis workflows
-  - libFuzzer fuzz targets for protocol decoders (see [FUZZING.md](./FUZZING.md)); build with `-Dfuzzing=true` (requires clang)
+  - libFuzzer fuzz targets for protocol decoders (see [FUZZING.md](./FUZZING.md) and [FUZZING_REPORT.md](./FUZZING_REPORT.md)); build with `-Dfuzzing=true` (requires clang)
 
 These features are intended for experimentation and research only and may change or be removed without notice.
 

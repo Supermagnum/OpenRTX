@@ -182,8 +182,11 @@ bool minmea_scan(const char *sentence, const char *format, ...)
                                 }
                             }
                             value = (10 * value) + digit;
-                            if (scale)
+                            if (scale) {
+                                if (scale > INT_LEAST32_MAX / 10)
+                                    break;
                                 scale *= 10;
+                            }
                         } else if (*field == '.' && scale == 0) {
                             scale = 1;
                         } else if (*field == ' ') {
