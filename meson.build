@@ -1152,3 +1152,61 @@ test('Codeplug Test',         cps_test)
 test('minmea conversion Test', minmea_conversion_test)
 test('Horse Frame Unit Test',  horse_frame_test)
 test('Horse Crypto Unit Test', horse_crypto_test)
+
+##
+## ----------------------------------- LibFuzzer targets (optional) ------------------------------
+## Build with: meson setup build -Dfuzzing=true (requires clang)
+## Run each: ./build/fuzz_<name> [corpus_dir] [artifacts_dir]
+## Run all for 3h: ./scripts/run_all_fuzzers_3h.sh build
+##
+if get_option('fuzzing')
+  fuzz_sanitizer_args = ['-fsanitize=fuzzer,address,undefined', '-fno-omit-frame-pointer', '-g']
+  fuzz_inc = openrtx_inc
+
+  fuzz_horse_frame = executable('fuzz_horse_frame',
+                                sources : horse_frame_test_src + ['tests/fuzz/fuzz_horse_frame.cpp'],
+                                include_directories : fuzz_inc,
+                                c_args : fuzz_sanitizer_args,
+                                cpp_args : fuzz_sanitizer_args,
+                                link_args : fuzz_sanitizer_args)
+
+  fuzz_ldpc_horse = executable('fuzz_ldpc_horse',
+                              sources : ['openrtx/src/protocols/horse/ldpc_horse.c', 'tests/fuzz/fuzz_ldpc_horse.c'],
+                              include_directories : fuzz_inc,
+                              c_args : fuzz_sanitizer_args,
+                              link_args : fuzz_sanitizer_args)
+
+  fuzz_m17_golay = executable('fuzz_m17_golay',
+                              sources : ['openrtx/src/protocols/M17/M17Golay.cpp', 'tests/fuzz/fuzz_m17_golay.cpp'],
+                              include_directories : fuzz_inc,
+                              cpp_args : fuzz_sanitizer_args,
+                              link_args : fuzz_sanitizer_args)
+
+  m17_callsign_fuzz_src = ['openrtx/src/protocols/M17/Callsign.cpp',
+                           'openrtx/src/protocols/M17/M17Callsign.cpp',
+                           'tests/fuzz/fuzz_m17_callsign.cpp']
+  fuzz_m17_callsign = executable('fuzz_m17_callsign',
+                                 sources : m17_callsign_fuzz_src,
+                                 include_directories : fuzz_inc,
+                                 cpp_args : fuzz_sanitizer_args,
+                                 link_args : fuzz_sanitizer_args)
+
+  m17_frame_fuzz_src = ['openrtx/src/protocols/M17/M17FrameDecoder.cpp',
+                        'openrtx/src/protocols/M17/M17Golay.cpp',
+                        'openrtx/src/protocols/M17/M17LinkSetupFrame.cpp',
+                        'openrtx/src/protocols/M17/M17Callsign.cpp',
+                        'openrtx/src/protocols/M17/Callsign.cpp',
+                        'tests/fuzz/fuzz_m17_frame.cpp']
+  fuzz_m17_frame = executable('fuzz_m17_frame',
+                              sources : m17_frame_fuzz_src,
+                              include_directories : fuzz_inc,
+                              cpp_args : fuzz_sanitizer_args,
+                              link_args : fuzz_sanitizer_args)
+
+  minmea_inc = include_directories('lib/minmea/include')
+  fuzz_minmea = executable('fuzz_minmea',
+                           sources : ['lib/minmea/minmea.c', 'tests/fuzz/fuzz_minmea.c'],
+                           include_directories : [fuzz_inc, minmea_inc],
+                           c_args : fuzz_sanitizer_args,
+                           link_args : fuzz_sanitizer_args)
+endif
