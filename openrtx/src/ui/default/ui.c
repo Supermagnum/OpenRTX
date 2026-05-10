@@ -1112,13 +1112,13 @@ static void _ui_menuBack(uint8_t prev_state)
     }
 }
 
-static void _ui_textInputReset(char *buf)
+static void _ui_textInputReset(char *buf, size_t bufSize)
 {
     ui_state.input_number = 0;
     ui_state.input_position = 0;
     ui_state.input_set = 0;
     ui_state.last_keypress = 0;
-    memset(buf, 0, 9);
+    memset(buf, 0, bufSize);
     buf[0] = '_';
 }
 
@@ -1568,7 +1568,8 @@ void ui_updateFSM(bool *sync_rtx)
                             // Enable dst ID input
                             ui_state.edit_mode = true;
                             // Reset text input variables
-                            _ui_textInputReset(ui_state.new_callsign);
+                            _ui_textInputReset(ui_state.new_callsign,
+                                    sizeof(ui_state.new_callsign));
                             vp_announceM17Info(NULL,  ui_state.edit_mode,
                                                queueFlags);
                         }
@@ -1764,7 +1765,8 @@ void ui_updateFSM(bool *sync_rtx)
                             // Enable dst ID input
                             ui_state.edit_mode = true;
                             // Reset text input variables
-                            _ui_textInputReset(ui_state.new_callsign);
+                            _ui_textInputReset(ui_state.new_callsign,
+                                    sizeof(ui_state.new_callsign));
                         }
                         else
                         {
@@ -2416,7 +2418,8 @@ void ui_updateFSM(bool *sync_rtx)
                         // If callsign input, reset text input variables
                         if(ui_state.menu_selected == M17_CALLSIGN)
                         {
-                            _ui_textInputReset(ui_state.new_callsign);
+                            _ui_textInputReset(ui_state.new_callsign,
+                                    sizeof(ui_state.new_callsign));
                             vp_announceBuffer(&currentLanguage->callsign,
                                             true, true, ui_state.new_callsign);
                         }
@@ -2425,7 +2428,8 @@ void ui_updateFSM(bool *sync_rtx)
                         {
                             //   ui_state.edit_mode = false;
                             ui_state.edit_message = true;
-                            _ui_textInputReset(ui_state.new_message);
+                            _ui_textInputReset(ui_state.new_message,
+                                    sizeof(ui_state.new_message));
                             vp_announceBuffer(&currentLanguage->metaText,
                                             true, true, ui_state.new_message);
                         }
