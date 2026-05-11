@@ -1,6 +1,6 @@
 /*
  * SPDX-FileCopyrightText: Copyright 2020-2026 OpenRTX Contributors
- * 
+ *
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
@@ -169,6 +169,7 @@ const char *settings_radio_items[] =
 const char * settings_m17_items[] =
 {
     "Callsign",
+    "Meta Txt",
     "CAN",
     "CAN RX Check"
 };
@@ -330,6 +331,8 @@ static void _ui_calculateLayout(layout_t *layout)
     static const symbolSize_t line3_symbol_size = SYMBOLS_SIZE_8PT;
     static const fontSize_t line4_font = FONT_SIZE_8PT;
     static const symbolSize_t line4_symbol_size = SYMBOLS_SIZE_8PT;
+    // Message font
+    const fontSize_t message_font = FONT_SIZE_6PT;
     // Frequency line font: 16 pt
     static const fontSize_t line3_large_font = FONT_SIZE_16PT;
     // Bottom bar font: 8 pt
@@ -371,6 +374,8 @@ static void _ui_calculateLayout(layout_t *layout)
     static const fontSize_t line3_large_font = FONT_SIZE_10PT;
     static const fontSize_t line4_font = FONT_SIZE_6PT;
     static const symbolSize_t line4_symbol_size = SYMBOLS_SIZE_6PT;
+    // Message font
+    const fontSize_t message_font = FONT_SIZE_6PT;
     // Bottom bar font: 6 pt
     static const fontSize_t bottom_font = FONT_SIZE_6PT;
     // TimeDate/Frequency input font
@@ -409,6 +414,8 @@ static void _ui_calculateLayout(layout_t *layout)
     static const fontSize_t input_font = FONT_SIZE_8PT;
     // Menu font
     static const fontSize_t menu_font = FONT_SIZE_6PT;
+    // Message font
+    const fontSize_t message_font = FONT_SIZE_6PT;
     // Not present on this resolution
     static const fontSize_t line1_font = 0;
     static const fontSize_t bottom_font = 0;
@@ -461,7 +468,8 @@ static void _ui_calculateLayout(layout_t *layout)
         line4_symbol_size,
         bottom_font,
         input_font,
-        menu_font
+        menu_font,
+        message_font
     };
 
     memcpy(layout, &new_layout, sizeof(layout_t));
@@ -795,7 +803,7 @@ static void _ui_changeVoiceLevel(int variation)
     state.settings.vpLevel += variation;
 
     // Force these flags to ensure the changes are spoken for levels 1 through 3.
-    vpQueueFlags_t flags = vpqInit
+    enum vpQueueFlags flags = vpqInit
                          | vpqAddSeparatingSilence
                          | vpqPlayImmediately;
 
@@ -816,7 +824,7 @@ static void _ui_changePhoneticSpell(bool newVal)
                                    state.settings.vpPhoneticSpell);
 }
 
-static bool _ui_checkStandby(long long time_since_last_event)
+bool _ui_checkStandby(long long time_since_last_event)
 {
     if (standby)
     {
@@ -885,7 +893,7 @@ int _ui_handleToneSelectScroll(bool direction_up)
     bool tone_rx_enable = state.channel.fm.rxToneEn;
     uint8_t tone_flags = tone_tx_enable << 1 | tone_rx_enable;
 
-    if(direction_up) 
+    if(direction_up)
         tone_flags++;
     else
         tone_flags--;
@@ -922,7 +930,7 @@ static void _ui_fsm_menuMacro(kbd_msg_t msg, bool *sync_rtx)
     ui_state.input_number = input_getPressedNumber(msg);
 #endif // CONFIG_UI_NO_KEYBOARD
     // CTCSS Encode/Decode Selection
-    vpQueueFlags_t queueFlags = vp_getVoiceLevelQueueFlags();
+    enum vpQueueFlags queueFlags = vp_getVoiceLevelQueueFlags();
 
     switch(ui_state.input_number)
     {
@@ -1015,10 +1023,21 @@ static void _ui_fsm_menuMacro(kbd_msg_t msg, bool *sync_rtx)
             vp_announceRadioMode(state.channel.mode, queueFlags);
             break;
         case 6:
-            if (state.channel.power == 1000)
-                state.channel.power = 5000;
-            else
-                state.channel.power = 1000;
+
+            switch(state.channel.power)
+            {
+                case 1000:
+                    state.channel.power = 2500;
+                    break;
+
+                case 2500:
+                    state.channel.power = 5000;
+                    break;
+
+                default:
+                    state.channel.power = 1000;
+            }
+
             *sync_rtx = true;
             vp_announcePower(state.channel.power, queueFlags);
             break;
@@ -1111,13 +1130,13 @@ static void _ui_menuBack(uint8_t prev_state)
     }
 }
 
-static void _ui_textInputReset(char *buf)
+static void _ui_textInputReset(char *buf, size_t bufSize)
 {
     ui_state.input_number = 0;
     ui_state.input_position = 0;
     ui_state.input_set = 0;
     ui_state.last_keypress = 0;
-    memset(buf, 0, 9);
+    memset(buf, 0, bufSize);
     buf[0] = '_';
 }
 
@@ -1229,7 +1248,11 @@ static void _ui_numberInputKeypad(uint32_t *num, kbd_msg_t msg)
 
     // If enter is pressed, advance to the next digit
     if (msg.keys & KEY_ENTER)
-        *num *= 10;
+    {
+        uint32_t tmp = 0;
+        if (!__builtin_mul_overflow(*num, 10, &tmp))
+            *num = tmp;
+    }
 
     // Announce the character
     vp_announceInputChar('0' + *num % 10);
@@ -1237,14 +1260,18 @@ static void _ui_numberInputKeypad(uint32_t *num, kbd_msg_t msg)
     // Update reference values
     ui_state.input_number = *num % 10;
 #else
-    // Maximum frequency len is uint32_t max value number of decimal digits
-    if(ui_state.input_position >= 10)
-        return;
-
     // Get currently pressed number key
     uint8_t num_key = input_getPressedNumber(msg);
-    *num *= 10;
-    *num += num_key;
+
+    uint32_t tmp = 0;
+
+    // Add a another digit onto the offset only if
+    // it won't cause an overflow
+    if (__builtin_mul_overflow(*num, 10, &tmp) ||
+        __builtin_add_overflow(tmp, num_key, &tmp))
+        return;
+
+    *num = tmp;
 
     // Announce the character
     vp_announceInputChar('0' + num_key);
@@ -1318,7 +1345,7 @@ static uint8_t  priorGPSFixType = 0;
 static uint8_t  priorSatellitesInView = 0;
 static uint32_t vpGPSLastUpdate = 0;
 
-static vpGPSInfoFlags_t GetGPSDirectionOrSpeedChanged()
+static enum vpGPSInfoFlags GetGPSDirectionOrSpeedChanged()
 {
     if (!state.settings.gps_enabled)
         return vpGPSNone;
@@ -1327,7 +1354,7 @@ static vpGPSInfoFlags_t GetGPSDirectionOrSpeedChanged()
     if (now - vpGPSLastUpdate < 8000)
         return vpGPSNone;
 
-    vpGPSInfoFlags_t whatChanged=  vpGPSNone;
+    enum vpGPSInfoFlags whatChanged = vpGPSNone;
 
     if (state.gps_data.fix_quality != priorGPSFixQuality)
     {
@@ -1419,7 +1446,7 @@ void ui_updateFSM(bool *sync_rtx)
         kbd_msg_t msg;
         msg.value = event.payload;
         bool f1Handled = false;
-        vpQueueFlags_t queueFlags = vp_getVoiceLevelQueueFlags();
+        enum vpQueueFlags queueFlags = vp_getVoiceLevelQueueFlags();
         // If we get out of standby, we ignore the kdb event
         // unless is the MONI key for the MACRO functions
         if (_ui_exitStandby(now) && !(msg.keys & KEY_MONI))
@@ -1559,7 +1586,8 @@ void ui_updateFSM(bool *sync_rtx)
                             // Enable dst ID input
                             ui_state.edit_mode = true;
                             // Reset text input variables
-                            _ui_textInputReset(ui_state.new_callsign);
+                            _ui_textInputReset(ui_state.new_callsign,
+                                    sizeof(ui_state.new_callsign));
                             vp_announceM17Info(NULL,  ui_state.edit_mode,
                                                queueFlags);
                         }
@@ -1755,7 +1783,8 @@ void ui_updateFSM(bool *sync_rtx)
                             // Enable dst ID input
                             ui_state.edit_mode = true;
                             // Reset text input variables
-                            _ui_textInputReset(ui_state.new_callsign);
+                            _ui_textInputReset(ui_state.new_callsign,
+                                    sizeof(ui_state.new_callsign));
                         }
                         else
                         {
@@ -2209,11 +2238,16 @@ void ui_updateFSM(bool *sync_rtx)
                             if(msg.keys & KEY_ENTER)
                             {
 #endif
-                                // Apply new offset
-                                state.channel.tx_frequency = state.channel.rx_frequency + ui_state.new_offset;
-                                vp_queueStringTableEntry(&currentLanguage->offset);
-                                vp_queueFrequency(ui_state.new_offset);
-                                ui_state.edit_mode = false;
+                                // Apply new offset if it is within the hardware
+                                // limits of the radio
+                                freq_t new_freq = state.channel.rx_frequency + ui_state.new_offset;
+                                if (_ui_freq_check_limits(new_freq))
+                                {
+                                    state.channel.tx_frequency = new_freq;
+                                    vp_queueStringTableEntry(&currentLanguage->offset);
+                                    vp_queueFrequency(ui_state.new_offset);
+                                    ui_state.edit_mode = false;
+                                }
                             }
                             else
                             if(msg.keys & KEY_ESC)
@@ -2331,6 +2365,42 @@ void ui_updateFSM(bool *sync_rtx)
                                 f1Handled=true;
                             }
                             break;
+                        case M17_METATEXT:
+                            // Handle text input for M17 message text
+                            if(msg.keys & KEY_ENTER)
+                            {
+                                _ui_textInputConfirm(ui_state.new_message);
+                                // Save selected message and disable input mode
+                                strncpy(state.settings.M17_meta_text, ui_state.new_message, 52);
+                                ui_state.edit_message = false;
+                                ui_state.edit_mode = false;
+                                vp_announceBuffer(&currentLanguage->metaText,
+                                                  false, true, state.settings.M17_meta_text);
+                            }
+                            else if(msg.keys & KEY_ESC)
+                            {
+                                // Discard selected message and disable input mode
+                                ui_state.edit_message = false;
+                                ui_state.edit_mode = false;
+                                vp_announceBuffer(&currentLanguage->metaText,
+                                                  false, true, state.settings.M17_meta_text);
+                            }
+                            else if(msg.keys & KEY_UP || msg.keys & KEY_DOWN ||
+                                     msg.keys & KEY_LEFT || msg.keys & KEY_RIGHT)
+                            {
+                                _ui_textInputDel(ui_state.new_message);
+                            }
+                            else if(input_isCharPressed(msg))
+                            {
+                                _ui_textInputKeypad(ui_state.new_message, 52, msg, false);
+                            }
+                            else if (msg.long_press && (msg.keys & KEY_F1) && (state.settings.vpLevel > vpBeep))
+                            {
+                                vp_announceBuffer(&currentLanguage->metaText,
+                                                  true, true, ui_state.new_message);
+                                f1Handled=true;
+                            }
+                            break;
                         case M17_CAN:
                             if(msg.keys & KEY_DOWN || msg.keys & KNOB_LEFT)
                                 _ui_changeM17Can(-1);
@@ -2366,9 +2436,20 @@ void ui_updateFSM(bool *sync_rtx)
                         // If callsign input, reset text input variables
                         if(ui_state.menu_selected == M17_CALLSIGN)
                         {
-                            _ui_textInputReset(ui_state.new_callsign);
+                            _ui_textInputReset(ui_state.new_callsign,
+                                    sizeof(ui_state.new_callsign));
                             vp_announceBuffer(&currentLanguage->callsign,
                                             true, true, ui_state.new_callsign);
+                        }
+                        // If message input, reset text input variables
+                        if(ui_state.menu_selected == M17_METATEXT)
+                        {
+                            //   ui_state.edit_mode = false;
+                            ui_state.edit_message = true;
+                            _ui_textInputReset(ui_state.new_message,
+                                    sizeof(ui_state.new_message));
+                            vp_announceBuffer(&currentLanguage->metaText,
+                                            true, true, ui_state.new_message);
                         }
                     }
                     else if(msg.keys & KEY_UP || msg.keys & KNOB_LEFT)
@@ -2556,7 +2637,7 @@ void ui_updateFSM(bool *sync_rtx)
             (state.settings.vpLevel > vpLow) &&
             (!txOngoing && !rtx_rxSquelchOpen()))
         {// automatically read speed and direction changes only!
-            vpGPSInfoFlags_t whatChanged = GetGPSDirectionOrSpeedChanged();
+            enum vpGPSInfoFlags whatChanged = GetGPSDirectionOrSpeedChanged();
             if (whatChanged != vpGPSNone)
                 vp_announceGPSInfo(whatChanged);
         }

@@ -427,6 +427,20 @@ int _ui_getM17ValueName(char *buf, uint8_t max_len, uint8_t index)
             sniprintf(buf, max_len, "%s", last_state.settings.callsign);
             break;
 
+        case M17_METATEXT:
+            // limit display to 8 characters
+            if (strlen(last_state.settings.M17_meta_text) > 7)
+            {
+                char tmp[9];
+                memcpy(tmp, last_state.settings.M17_meta_text, 7);
+                tmp[8] = 0;
+                // append asterisk to indicate more characters than displayed
+                sniprintf(buf, max_len, "%s*", tmp);
+            }
+            else
+                sniprintf(buf, max_len, "%s", last_state.settings.M17_meta_text);
+        break;
+
         case M17_CAN:
             sniprintf(buf, max_len, "%d", last_state.settings.m17_can);
             break;
@@ -982,20 +996,38 @@ void _ui_drawSettingsM17(ui_state_t* ui_state)
     // Print "M17 Settings" on top bar
     gfx_print(layout.top_pos, layout.top_font, TEXT_ALIGN_CENTER,
               color_white, currentLanguage->m17settings);
-    gfx_printLine(1, 4, layout.top_h, CONFIG_SCREEN_HEIGHT - layout.bottom_h,
-                  layout.horizontal_pad, layout.menu_font,
-                  TEXT_ALIGN_LEFT, color_white, currentLanguage->callsign);
     if((ui_state->edit_mode) && (ui_state->menu_selected == M17_CALLSIGN))
     {
         uint16_t rect_width = CONFIG_SCREEN_WIDTH - (layout.horizontal_pad * 2);
         uint16_t rect_height = (CONFIG_SCREEN_HEIGHT - (layout.top_h + layout.bottom_h))/2;
         point_t rect_origin = {(CONFIG_SCREEN_WIDTH - rect_width) / 2,
                                (CONFIG_SCREEN_HEIGHT - rect_height) / 2};
+
+        gfx_printLine(1, 4, layout.top_h, CONFIG_SCREEN_HEIGHT - layout.bottom_h,
+                    layout.horizontal_pad, layout.menu_font,
+                    TEXT_ALIGN_LEFT, color_white, currentLanguage->callsign);
         gfx_drawRect(rect_origin, rect_width, rect_height, color_white, false);
         // Print M17 callsign being typed
         gfx_printLine(1, 1, layout.top_h, CONFIG_SCREEN_HEIGHT - layout.bottom_h,
                       layout.horizontal_pad, layout.input_font,
                       TEXT_ALIGN_CENTER, color_white, ui_state->new_callsign);
+    }
+    else
+    if((ui_state->edit_message) && (ui_state->menu_selected == M17_METATEXT))
+    {
+        uint16_t rect_width = CONFIG_SCREEN_WIDTH - (layout.horizontal_pad * 2);
+        uint16_t rect_height = (CONFIG_SCREEN_HEIGHT - (layout.top_h + layout.bottom_h))/2;
+        point_t rect_origin = {(CONFIG_SCREEN_WIDTH - rect_width) / 2,
+            (CONFIG_SCREEN_HEIGHT - rect_height) / 2};
+
+        gfx_printLine(1, 4, layout.top_h, CONFIG_SCREEN_HEIGHT - layout.bottom_h,
+                    layout.horizontal_pad, layout.menu_font,
+                    TEXT_ALIGN_LEFT, color_white, currentLanguage->metaText);
+        gfx_drawRect(rect_origin, rect_width, rect_height, color_white, false);
+        // Print M17 message being typed
+        gfx_printLine(1, 1, layout.top_h, CONFIG_SCREEN_HEIGHT - layout.bottom_h,
+                        layout.horizontal_pad, layout.message_font,
+                        TEXT_ALIGN_CENTER, color_white, ui_state->new_message);
     }
     else
     {
@@ -1297,8 +1329,19 @@ bool _ui_drawMacroMenu(ui_state_t* ui_state)
     // Remember that power is expressed in mW!
     unsigned int power_int = (last_state.channel.power / 1000);
     unsigned int power_dec = (last_state.channel.power % 1000) / 100;
-    gfx_print(pos_2, layout.top_font, TEXT_ALIGN_RIGHT,
-              color_white, "%d.%dW", power_int, power_dec);
+
+    if (power_dec == 0)
+    {
+        // Print power output as an integer without a decimal (i.e "5W")
+        gfx_print(pos_2, layout.top_font, TEXT_ALIGN_RIGHT,
+                  color_white, "%dW", power_int);
+    }
+    else
+    {
+        // Smaller font to fit larger strings on screen (i.e "2.5W")
+        gfx_print(pos_2, layout.top_font - 1, TEXT_ALIGN_RIGHT,
+                  color_white, "%d.%dW", power_int, power_dec);
+    }
 
     // Third row
 #if defined(CONFIG_UI_NO_KEYBOARD)

@@ -23,12 +23,7 @@ static const struct W25QxCfg cfg =
     .cs  = { FLASH_CS }
 };
 
-#ifdef PLATFORM_CS7000P
-W25Qx_DEVICE_DEFINE(eflash, cfg, 0x2000000)        // 32 MB, 256 Mbit
-#else
-W25Qx_DEVICE_DEFINE(eflash, cfg, 0x1000000)        // 16 MB, 128 Mbit
-#endif
-
+W25Qx_DEVICE_DEFINE(eflash, cfg)
 EEEP_DEVICE_DEFINE(eeep)
 
 const struct nvmPartition memPartitions[] =
@@ -63,15 +58,28 @@ static const struct nvmDescriptor extMem[] =
     {
         .name       = "External flash",
         .dev        = &eflash,
-        .partNum    = sizeof(memPartitions)/sizeof(struct nvmPartition),
+        .baseAddr   = 0x00000000,
+#ifdef PLATFORM_CS7000P
+        .size       = 0x2000000,        // 32 MB, 256 Mbit
+#else
+        .size       = 0x1000000,        // 16 MB, 128 Mbit
+#endif
+        .nbPart     = sizeof(memPartitions)/sizeof(struct nvmPartition),
         .partitions = memPartitions
     },
     {
         .name       = "Virtual EEPROM",
         .dev        = &eeep,
-        .partNum    = 0,
+        .baseAddr   = 0x00000000,
+        .size       = 0xFFFFFFFF,       // Dummy value, this device has no physical size
+        .nbPart     = 0,
         .partitions = NULL
     }
+};
+
+const struct nvmTable nvmTab = {
+    .areas = extMem,
+    .nbAreas = ARRAY_SIZE(extMem),
 };
 
 static uint16_t settingsCrc;
@@ -102,26 +110,18 @@ void nvm_terminate()
 #endif
 }
 
-const struct nvmDescriptor *nvm_getDesc(const size_t index)
-{
-    if(index > 2)
-        return NULL;
-
-    return &extMem[index];
-}
-
 void nvm_readCalibData(void *buf)
 {
     struct CS7000Calib *calData = (struct CS7000Calib *) buf;
 
-    nvm_read(0, 0, 0x1000, &(calData->txCalFreq),      sizeof(calData->txCalFreq));
-    nvm_read(0, 0, 0x1020, &(calData->rxCalFreq),      sizeof(calData->rxCalFreq));
-    nvm_read(0, 0, 0x1044, &(calData->rxSensitivity),  sizeof(calData->rxSensitivity));
-    nvm_read(0, 0, 0x106C, &(calData->txHighPwr),      sizeof(calData->txHighPwr));
-    nvm_read(0, 0, 0x1074, &(calData->txMiddlePwr),    sizeof(calData->txMiddlePwr));
-    nvm_read(0, 0, 0x10C4, &(calData->txDigitalPathQ), sizeof(calData->txDigitalPathQ));
-    nvm_read(0, 0, 0x10CC, &(calData->txAnalogPathI),  sizeof(calData->txAnalogPathI));
-    nvm_read(0, 0, 0x10DC, &(calData->errorRate),      sizeof(calData->errorRate));
+    nvm_read(0, 1, 0x1000, &(calData->txCalFreq),      sizeof(calData->txCalFreq));
+    nvm_read(0, 1, 0x1020, &(calData->rxCalFreq),      sizeof(calData->rxCalFreq));
+    nvm_read(0, 1, 0x1044, &(calData->rxSensitivity),  sizeof(calData->rxSensitivity));
+    nvm_read(0, 1, 0x106C, &(calData->txHighPwr),      sizeof(calData->txHighPwr));
+    nvm_read(0, 1, 0x1074, &(calData->txMiddlePwr),    sizeof(calData->txMiddlePwr));
+    nvm_read(0, 1, 0x10C4, &(calData->txDigitalPathQ), sizeof(calData->txDigitalPathQ));
+    nvm_read(0, 1, 0x10CC, &(calData->txAnalogPathI),  sizeof(calData->txAnalogPathI));
+    nvm_read(0, 1, 0x10DC, &(calData->errorRate),      sizeof(calData->errorRate));
 
     for(int i = 0; i < 8; i++)
     {
@@ -138,7 +138,7 @@ void nvm_readHwInfo(hwInfo_t *info)
 int nvm_readVfoChannelData(channel_t *channel)
 {
     memset(channel, 0x00, sizeof(channel_t));
-    int ret = nvm_read(1, -1, 0x0001, channel, sizeof(channel_t));
+    int ret = nvm_read(1, 0, 0x0001, channel, sizeof(channel_t));
     if(ret < 0)
         return -1;
 
@@ -150,7 +150,7 @@ int nvm_readVfoChannelData(channel_t *channel)
 int nvm_readSettings(settings_t *settings)
 {
     memset(settings, 0x00, sizeof(settings_t));
-    int ret = nvm_read(1, -1, 0x0002, settings, sizeof(settings_t));
+    int ret = nvm_read(1, 0, 0x0002, settings, sizeof(settings_t));
     if(ret < 0)
         return -1;
 
@@ -170,11 +170,11 @@ int nvm_writeSettingsAndVfo(const settings_t *settings, const channel_t *vfo)
 {
     uint16_t crc = crc_ccitt(vfo, sizeof(channel_t));
     if(crc != vfoCrc)
-        nvm_write(1, -1, 0x0001, vfo, sizeof(channel_t));
+        nvm_write(1, 0, 0x0001, vfo, sizeof(channel_t));
 
     crc = crc_ccitt(settings, sizeof(settings_t));
     if(crc != settingsCrc)
-        nvm_write(1, -1, 0x0002, settings, sizeof(settings_t));
+        nvm_write(1, 0, 0x0002, settings, sizeof(settings_t));
 
     return 0;
 }

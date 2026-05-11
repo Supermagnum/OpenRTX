@@ -1,6 +1,6 @@
 /*
  * SPDX-FileCopyrightText: Copyright 2020-2026 OpenRTX Contributors
- * 
+ *
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
@@ -35,6 +35,11 @@ static const uint32_t baseAddress = 0x080E0000;
 memory_t *memory = ((memory_t *) baseAddress);
 
 mod17Calib_t mod17CalData;   // Calibration data, to be saved and loaded
+
+const struct nvmTable nvmTab = {
+    .areas = NULL,
+    .nbAreas = 0,
+};
 
 /**
  * \internal
@@ -93,22 +98,9 @@ void nvm_terminate()
 
 }
 
-size_t nvm_getMemoryAreas(const struct nvmArea **list)
-{
-    *list = NULL;
-
-    return 0;
-}
-
 void nvm_readCalibData(void *buf)
 {
     (void) buf;
-}
-
-const struct nvmDescriptor *nvm_getDesc(const size_t index)
-{
-    (void) index;
-    return NULL;
 }
 
 void nvm_readHwInfo(hwInfo_t *info)

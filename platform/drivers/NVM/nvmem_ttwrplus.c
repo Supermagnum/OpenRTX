@@ -9,16 +9,22 @@
 #include "interfaces/nvmem.h"
 #include "flash_zephyr.h"
 
-ZEPHYR_FLASH_DEVICE_DEFINE(eflash, flash, FIXED_PARTITION_SIZE(storage_partition));
+ZEPHYR_FLASH_DEVICE_DEFINE(eflash, flash);
 
 static const struct nvmDescriptor nvMemory =
 {
     .name       = "External flash",
     .dev        = &eflash,
-    .partNum    = 0,
+    .baseAddr   = 0x00000000,
+    .size       = FIXED_PARTITION_SIZE(storage_partition),
+    .nbPart     = 0,
     .partitions = NULL
 };
 
+const struct nvmTable nvmTab = {
+    .areas = &nvMemory,
+    .nbAreas = 1,
+};
 
 void nvm_init()
 {
@@ -28,14 +34,6 @@ void nvm_init()
 void nvm_terminate()
 {
 
-}
-
-const struct nvmDescriptor *nvm_getDesc(const size_t index)
-{
-    if(index >= 0)
-        return NULL;
-
-    return &nvMemory;
 }
 
 void nvm_readCalibData(void *buf)

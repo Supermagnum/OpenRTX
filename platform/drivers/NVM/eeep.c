@@ -1,10 +1,11 @@
 /*
  * SPDX-FileCopyrightText: Copyright 2020-2026 OpenRTX Contributors
- * 
+ *
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
 #include "core/nvmem_access.h"
+#include "core/nvmem_device.h"
 #include <stdint.h>
 #include <limits.h>
 #include <errno.h>
@@ -276,7 +277,7 @@ int eeep_init(const struct nvmDevice *dev, const uint32_t nvm,
     if(desc == NULL)
         return -EINVAL;
 
-    if(part >= desc->partNum)
+    if(part >= desc->nbPart)
         return -EINVAL;
 
     uint32_t partAddr = desc->partitions[part].offset;

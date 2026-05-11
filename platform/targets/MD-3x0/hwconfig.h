@@ -14,12 +14,11 @@
 extern "C" {
 #endif
 
-enum adcChannel
-{
-    ADC_VOL_CH   = 0,
-    ADC_VBAT_CH  = 1,
-    ADC_VOX_CH   = 3,
-    ADC_RSSI_CH  = 8
+enum adcChannel {
+    ADC_VOL_CH = 0,
+    ADC_VBAT_CH = 1,
+    ADC_VOX_CH = 3,
+    ADC_RSSI_CH = 8
 };
 
 extern const struct gpsDevice gps;
@@ -57,8 +56,11 @@ extern const struct Adc adc1;
 /* Device supports M17 mode */
 #define CONFIG_M17
 
-/* Device supports Horse encrypted voice mode */
-#define CONFIG_HORSE
+/* CONFIG_HORSE is defined via Meson md3x0_def (avoid redefinition vs -D). */
+
+/* Microphone audio input */
+#define CONFIG_MIC_GAIN 32
+#define CONFIG_MIC_OVERSAMPLE 8
 
 #ifdef __cplusplus
 }

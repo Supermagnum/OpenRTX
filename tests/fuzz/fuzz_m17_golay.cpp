@@ -7,7 +7,7 @@
  * Input: 4 bytes (codeword as uint32_t).
  */
 
-#include "protocols/M17/M17Golay.hpp"
+#include "protocols/M17/Golay.hpp"
 #include <cstdint>
 #include <cstring>
 

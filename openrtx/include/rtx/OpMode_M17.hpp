@@ -7,10 +7,11 @@
 #ifndef OPMODE_M17_H
 #define OPMODE_M17_H
 
-#include "protocols/M17/M17FrameDecoder.hpp"
-#include "protocols/M17/M17FrameEncoder.hpp"
-#include "protocols/M17/M17Demodulator.hpp"
-#include "protocols/M17/M17Modulator.hpp"
+#include "protocols/M17/FrameDecoder.hpp"
+#include "protocols/M17/FrameEncoder.hpp"
+#include "protocols/M17/Demodulator.hpp"
+#include "protocols/M17/Modulator.hpp"
+#include "protocols/M17/MetaText.hpp"
 #include "core/audio_path.h"
 #include "OpMode.hpp"
 
@@ -120,7 +121,9 @@ private:
      */
     bool compareCallsigns(const std::string& localCs, const std::string& incomingCs);
 
-    static constexpr uint16_t GPS_UPDATE_TICKS = 5 * 30;
+    // GPS update interval in superframes. Each superframe is 6 LICH frames
+    // (~240 ms), so 25 superframes ≈ 6 seconds.
+    static constexpr uint16_t GPS_UPDATE_TICKS = 25;
 
     bool startRx;                      ///< Flag for RX management.
     bool startTx;                      ///< Flag for TX management.
@@ -131,11 +134,12 @@ private:
     bool invertRxPhase;                ///< RX signal phase inversion setting.
     pathId rxAudioPath;                ///< Audio path ID for RX
     pathId txAudioPath;                ///< Audio path ID for TX
-    M17::M17Modulator    modulator;    ///< M17 modulator.
-    M17::M17Demodulator  demodulator;  ///< M17 demodulator.
-    M17::M17FrameDecoder decoder;      ///< M17 frame decoder
-    M17::M17FrameEncoder encoder;      ///< M17 frame encoder
+    M17::Modulator    modulator;    ///< M17 modulator.
+    M17::Demodulator  demodulator;  ///< M17 demodulator.
+    M17::FrameDecoder decoder;      ///< M17 frame decoder
+    M17::FrameEncoder encoder;      ///< M17 frame encoder
     uint16_t gpsTimer;                 ///< GPS data transmission interval timer
+    M17::MetaText metaText;            ///< M17 metatext accumulator
 };
 
 #endif /* OPMODE_M17_H */

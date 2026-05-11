@@ -4,7 +4,10 @@
 # This file is part of OpenRTX.
 
 #Build dirs
-build*
+/build*
+
+# Meson wrap lock file
+subprojects/.wraplock
 
 # Prerequisites
 *.d
@@ -48,6 +51,9 @@ build*
 # Python byte-compiled
 */__pycache__
 
+# Python virtual environments
+.venv/
+
 # Kdevelop files
 *.kdev4
 .kdev4/
@@ -61,6 +67,7 @@ subprojects/radio_tool
 subprojects/codec2
 subprojects/tinyusb
 subprojects/XPowersLib
+subprojects/catch2
 
 # ignore log files
 *.log

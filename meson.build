@@ -2,7 +2,7 @@
 ## OpenRTX - Modular Open Source Radio Firmware
 ##
 project('OpenRTX', ['c', 'cpp'],
-  version : '0.4.3',
+  version : '0.4.4',
   default_options : ['warning_level=3', 'b_staticpic=false'])
 
 ##
@@ -59,15 +59,15 @@ openrtx_src = ['openrtx/src/core/state.c',
                'openrtx/src/rtx/rtx.cpp',
                'openrtx/src/rtx/OpMode_FM.cpp',
                'openrtx/src/rtx/OpMode_M17.cpp',
-               'openrtx/src/protocols/M17/M17DSP.cpp',
-               'openrtx/src/protocols/M17/M17Golay.cpp',
-               'openrtx/src/protocols/M17/M17Callsign.cpp',
+               'openrtx/src/protocols/M17/DSP.cpp',
+               'openrtx/src/protocols/M17/Golay.cpp',
+               'openrtx/src/protocols/M17/MetaText.cpp',
                'openrtx/src/protocols/M17/Callsign.cpp',
-               'openrtx/src/protocols/M17/M17Modulator.cpp',
-               'openrtx/src/protocols/M17/M17Demodulator.cpp',
-               'openrtx/src/protocols/M17/M17FrameEncoder.cpp',
-               'openrtx/src/protocols/M17/M17FrameDecoder.cpp',
-               'openrtx/src/protocols/M17/M17LinkSetupFrame.cpp']
+               'openrtx/src/protocols/M17/Modulator.cpp',
+               'openrtx/src/protocols/M17/Demodulator.cpp',
+               'openrtx/src/protocols/M17/FrameEncoder.cpp',
+               'openrtx/src/protocols/M17/FrameDecoder.cpp',
+               'openrtx/src/protocols/M17/LinkSetupFrame.cpp']
 
 horse_src = ['openrtx/src/protocols/horse/HorseFrameEncoder.cpp',
              'openrtx/src/protocols/horse/HorseFrameDecoder.cpp',
@@ -116,6 +116,10 @@ endif
 openrtx_src += ['lib/minmea/minmea.c']
 openrtx_inc += ['lib/minmea/include']
 
+# QRCode, QR Code generation library
+openrtx_src += ['lib/QRCode/qrcode.c']
+openrtx_inc += ['lib/QRCode/include']
+
 # QDEC, a very simple, header only, quadrature decoding library
 openrtx_inc += ['lib/qdec/include']
 
@@ -129,6 +133,13 @@ if meson.is_cross_build()
 else
   cpp        = meson.get_compiler('cpp')
   codec2_dep = cpp.find_library('codec2')
+endif
+
+# Catch2, C++ testing framework (only for native/linux builds)
+if not meson.is_cross_build()
+  catch2_dep = dependency('catch2-with-main', fallback: ['catch2', 'catch2_with_main_dep'])
+else
+  catch2_dep = disabler()
 endif
 
 # XPowersLib, library for x-powers power management series
@@ -224,6 +235,7 @@ stm32f405_src = ['platform/mcu/STM32F4xx/boot/startup.cpp',
                  'platform/drivers/ADC/adc_stm32f4.c',
                  'platform/drivers/SPI/spi_stm32f4.c',
                  'platform/drivers/GPIO/gpio_stm32.c',
+                 'platform/drivers/NVM/flash_stm32f4.c',
                  'platform/drivers/audio/stm32_dac.cpp',
                  'platform/drivers/audio/stm32_adc.cpp',
                  'platform/drivers/audio/stm32_pwm.cpp',
@@ -288,6 +300,7 @@ stm32h743_src = ['platform/mcu/STM32H7xx/boot/startup.cpp',
                  'platform/drivers/SPI/spi_stm32h7.c',
                  'platform/drivers/GPS/gps_stm32.cpp',
                  'platform/drivers/GPS/nmea_rbuf.c',
+                 'platform/drivers/NVM/flash_stm32h7.c',
                  'platform/drivers/audio/stm32_dac.cpp',
                  'platform/drivers/audio/stm32_adc.cpp',
                  'platform/mcu/CMSIS/Device/ST/STM32H7xx/Source/system_stm32h7xx.c']
@@ -839,87 +852,100 @@ targets = [
   {
     'name'     : 'linux',
     'opts'     : linux_opts,
-    'flashable': false
+    'flashable': false,
+    'cpu'      : 'linux'
   },
   {
     'name'     : 'linux_smallscreen',
     'opts'     : linux_small_opts,
-    'flashable': false
+    'flashable': false,
+    'cpu'      : 'linux'
   },
   {
     'name'     : 'linux_mod17',
     'opts'     : linux_mod17_opts,
-    'flashable': false
+    'flashable': false,
+    'cpu'      : 'linux'
   },
   {
     'name'     : 'md3x0',
     'opts'     : md3x0_opts,
     'flashable': true,
     'wrap'     : 'MD380',
-    'load_addr': '0x0800C000'
+    'load_addr': '0x0800C000',
+    'cpu'      : 'cm4'
   },
   {
     'name'     : 'mduv3x0',
     'opts'     : mduv3x0_opts,
     'flashable': true,
     'wrap'     : 'UV3X0',
-    'load_addr': '0x0800C000'
+    'load_addr': '0x0800C000',
+    'cpu'      : 'cm4'
   },
   {
     'name'     : 'gd77',
     'opts'     : gd77_opts,
     'flashable': true,
     'wrap'     : 'GD-77',
-    'load_addr': '0x0800C000'
+    'load_addr': '0x0800C000',
+    'cpu'      : 'cm4'
   },
   {
     'name'     : 'dm1801',
     'opts'     : dm1801_opts,
     'flashable': true,
     'wrap'     : 'DM-1801',
-    'load_addr': '0x0800C000'
+    'load_addr': '0x0800C000',
+    'cpu'      : 'cm4'
   },
   {
     'name'     : 'md9600',
     'opts'     : md9600_opts,
     'flashable': true,
     'wrap'     : 'MD9600',
-    'load_addr': '0x0800C000'
+    'load_addr': '0x0800C000',
+    'cpu'      : 'cm4'
   },
   {
     'name'     : 'mod17',
     'opts'     : mod17_opts,
     'flashable': true,
     'wrap'     : ' ',
-    'load_addr': ' '
+    'load_addr': ' ',
+    'cpu'      : 'cm4'
   },
   {
     'name'     : 'ttwrplus',
     'opts'     : ttwrplus_opts,
     'flashable': true,
     'wrap'     : ' ',
-    'load_addr': ' '
+    'load_addr': ' ',
+    'cpu'      : 'lx7'
   },
   {
     'name'     : 'cs7000',
     'opts'     : cs7000_opts,
     'flashable': true,
     'wrap'     : 'cs7000',
-    'load_addr': '0x08000000'
+    'load_addr': '0x08000000',
+    'cpu'      : 'cm4'
   },
   {
     'name'     : 'cs7000p',
     'opts'     : cs7000p_opts,
     'flashable': true,
     'wrap'     : ' ',
-    'load_addr': '0x08100000'
+    'load_addr': '0x08100000',
+    'cpu'      : 'cm7'
   },
   {
     'name'     : 'dm1701',
     'opts'     : dm1701_opts,
     'flashable': true,
     'wrap'     : 'DM1701',
-    'load_addr': '0x0800C000'
+    'load_addr': '0x0800C000',
+    'cpu'      : 'cm4'
   },
 ]
 
@@ -932,6 +958,10 @@ west        = find_program('west',                             required:false, d
 uf2conv     = find_program('scripts/uf2conv.py',               required:false, disabler:true)
 dfu_convert = find_program('scripts/dfu-convert.py',           required:false, disabler:true)
 cs7000_wrap = find_program('scripts/cs7000_wrap.py',           required:false, disabler:true)
+
+cm4_targets = []
+cm7_targets = []
+linux_targets = []
 
 foreach t : targets
 
@@ -992,7 +1022,6 @@ foreach t : targets
                      c_args              : target_opts['c_args'],
                      cpp_args            : target_opts['cpp_args'],
                      link_args           : target_opts['link_args'])
-
     if t['flashable']
 
       bin = custom_target(name+'_bin',
@@ -1068,8 +1097,20 @@ foreach t : targets
 
     endif
 
+    if t['cpu'] == 'cm4'
+      cm4_targets += exe
+    elif t['cpu'] == 'cm7'
+      cm7_targets += exe
+    elif t['cpu'] == 'linux'
+      linux_targets += exe
+    endif
+
   endif
 endforeach
+
+cm4 = alias_target('cm4', cm4_targets)
+cm7 = alias_target('cm7', cm7_targets)
+linux = alias_target('linux', linux_targets)
 
 ##
 ## ----------------------------------- Unit Tests ------------------------------
@@ -1078,7 +1119,7 @@ endforeach
 unit_test_opts = {'c_args'             : linux_c_args,
                   'cpp_args'           : linux_cpp_args,
                   'include_directories': linux_inc,
-                  'dependencies'       : linux_deps,
+                  'dependencies'       : linux_deps + [catch2_dep],
                   'link_args'          : linux_l_args}
 
 unit_test_src = linux_src + ui_src_default
@@ -1094,6 +1135,10 @@ m17_viterbi_test = executable('m17_viterbi_test',
 m17_callsign_test = executable('m17_callsign_test',
                       sources : unit_test_src + ['tests/unit/M17_callsign.cpp'],
                       kwargs  : unit_test_opts)
+
+m17_metatext_test = executable('m17_metatext_test',
+                      sources : unit_test_src + ['tests/unit/M17_metatext.cpp'],
+                      kwargs  : unit_test_opts)
                  
 m17_demodulator_test = executable('m17_demodulator_test',
                             sources: unit_test_src + ['tests/unit/M17_demodulator.cpp'],
@@ -1104,23 +1149,15 @@ m17_rrc_test = executable('m17_rrc_test',
                           kwargs: unit_test_opts)
 
 cps_test = executable('cps_test',
-                      sources : unit_test_src + ['tests/unit/cps.c'],
+                      sources : unit_test_src + ['tests/unit/cps.cpp'],
                       kwargs  : unit_test_opts)
 
 linux_inputStream_test = executable('linux_inputStream_test',
                                     sources : unit_test_src + ['tests/unit/linux_inputStream_test.cpp'],
                                     kwargs  : unit_test_opts)
 
-sine_test = executable('sine_test',
-                      sources : unit_test_src + ['tests/unit/play_sine.c'],
-                      kwargs  : unit_test_opts)
-
-vp_test = executable('vp_test',
-                      sources : unit_test_src + ['tests/unit/voice_prompts.c'],
-                      kwargs  : unit_test_opts)
-
 minmea_conversion_test = executable('minmea_conversion_test',
-                                     sources : unit_test_src + ['tests/unit/convert_minmea_coord.c'],
+                                     sources : unit_test_src + ['tests/unit/convert_minmea_coord.cpp'],
                                      kwargs  : unit_test_opts)
 
 horse_frame_test = executable('horse_frame_test',
@@ -1140,18 +1177,32 @@ horse_crypto_test = executable('horse_crypto_test',
                                cpp_args : linux_cpp_args,
                                link_args : linux_l_args)
 
+ui_check_standby_test = executable('ui_check_standby_test',
+                                    sources : unit_test_src + ['tests/unit/ui_check_standby.cpp'],
+                                    kwargs  : unit_test_opts)
+
+m17_packet_test = executable('m17_packet_test',
+                              sources : unit_test_src + ['tests/unit/M17_packet.cpp'],
+                              kwargs  : unit_test_opts)
+
+dsp_oversampling_test = executable('dsp_oversampling_test',
+                                    sources : unit_test_src + ['tests/unit/dsp_oversampling.cpp'],
+                                    kwargs  : unit_test_opts)
+
 test('M17 Golay Unit Test',   m17_golay_test)
 test('M17 Viterbi Unit Test', m17_viterbi_test)
-## test('M17 Demodulator Test',  m17_demodulator_test) # Skipped for now as this test no longer works after an M17 refactor
+test('M17 Demodulator Test',  m17_demodulator_test)
 test('M17 RRC Test',          m17_rrc_test)
 test('M17 Callsign Unit Test',          m17_callsign_test)
+test('M17 Meta Text Unit Test',         m17_metatext_test)
 test('Codeplug Test',         cps_test)
 ## test('Linux InputStream Test', linux_inputStream_test)
-## test('Sine Test',             sine_test)
-## test('Voice Prompts Test',    vp_test) # Skipped for now as this test no longer works
 test('minmea conversion Test', minmea_conversion_test)
 test('Horse Frame Unit Test',  horse_frame_test)
 test('Horse Crypto Unit Test', horse_crypto_test)
+test('UI Check Standby Test', ui_check_standby_test)
+test('M17 Packet Frame Test', m17_packet_test)
+test('DSP Oversampling Test', dsp_oversampling_test)
 
 ##
 ## ----------------------------------- LibFuzzer targets (optional) ------------------------------
@@ -1177,13 +1228,12 @@ if get_option('fuzzing')
                               link_args : fuzz_sanitizer_args)
 
   fuzz_m17_golay = executable('fuzz_m17_golay',
-                              sources : ['openrtx/src/protocols/M17/M17Golay.cpp', 'tests/fuzz/fuzz_m17_golay.cpp'],
+                              sources : ['openrtx/src/protocols/M17/Golay.cpp', 'tests/fuzz/fuzz_m17_golay.cpp'],
                               include_directories : fuzz_inc,
                               cpp_args : fuzz_sanitizer_args,
                               link_args : fuzz_sanitizer_args)
 
   m17_callsign_fuzz_src = ['openrtx/src/protocols/M17/Callsign.cpp',
-                           'openrtx/src/protocols/M17/M17Callsign.cpp',
                            'tests/fuzz/fuzz_m17_callsign.cpp']
   fuzz_m17_callsign = executable('fuzz_m17_callsign',
                                  sources : m17_callsign_fuzz_src,
@@ -1191,11 +1241,15 @@ if get_option('fuzzing')
                                  cpp_args : fuzz_sanitizer_args,
                                  link_args : fuzz_sanitizer_args)
 
-  m17_frame_fuzz_src = ['openrtx/src/protocols/M17/M17FrameDecoder.cpp',
-                        'openrtx/src/protocols/M17/M17Golay.cpp',
-                        'openrtx/src/protocols/M17/M17LinkSetupFrame.cpp',
-                        'openrtx/src/protocols/M17/M17Callsign.cpp',
+  m17_frame_fuzz_src = ['openrtx/src/protocols/M17/DSP.cpp',
+                        'openrtx/src/protocols/M17/Golay.cpp',
+                        'openrtx/src/protocols/M17/MetaText.cpp',
                         'openrtx/src/protocols/M17/Callsign.cpp',
+                        'openrtx/src/protocols/M17/Modulator.cpp',
+                        'openrtx/src/protocols/M17/Demodulator.cpp',
+                        'openrtx/src/protocols/M17/FrameEncoder.cpp',
+                        'openrtx/src/protocols/M17/FrameDecoder.cpp',
+                        'openrtx/src/protocols/M17/LinkSetupFrame.cpp',
                         'tests/fuzz/fuzz_m17_frame.cpp']
   fuzz_m17_frame = executable('fuzz_m17_frame',
                               sources : m17_frame_fuzz_src,

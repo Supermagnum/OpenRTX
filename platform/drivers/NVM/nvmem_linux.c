@@ -15,7 +15,7 @@
 
 #define NVM_MAX_PATHLEN 256
 
-POSIX_FILE_DEVICE_DEFINE(stateDevice, 1024)
+POSIX_FILE_DEVICE_DEFINE(stateDevice)
 
 const struct nvmPartition statePartitions[] =
 {
@@ -33,10 +33,16 @@ const struct nvmDescriptor stateNvm =
 {
     .name       = "Device state NVM area",
     .dev        = (const struct nvmDevice *) &stateDevice,
-    .partNum    = sizeof(statePartitions) / sizeof(struct nvmPartition),
+    .baseAddr   = 0x00000000,
+    .size       = 1024,
+    .nbPart     = sizeof(statePartitions) / sizeof(struct nvmPartition),
     .partitions = statePartitions
 };
 
+const struct nvmTable nvmTab = {
+    .areas = &stateNvm,
+    .nbAreas = 1,
+};
 
 /**
  * Creates a directory if it does not exist.
@@ -120,7 +126,7 @@ void nvm_init()
 
     strcat(memory_path, "state.bin");
 
-    int ret = posixFile_init(&stateDevice, memory_path);
+    int ret = posixFile_init(&stateDevice, memory_path, 1024);
     if(ret < 0)
         printf("Opening of state file failed with status %d\n", ret);
 
@@ -136,14 +142,6 @@ void nvm_terminate()
     posixFile_terminate(&stateDevice);
 }
 
-const struct nvmDescriptor *nvm_getDesc(const size_t index)
-{
-    if(index > 0)
-        return NULL;
-
-    return &stateNvm;
-}
-
 void nvm_readHwInfo(hwInfo_t *info)
 {
     /* Linux devices does not have any hardware info in the external flash. */
@@ -152,7 +150,7 @@ void nvm_readHwInfo(hwInfo_t *info)
 
 int nvm_readVfoChannelData(channel_t *channel)
 {
-    int ret = nvm_read(0, 0, 0, channel, sizeof(channel_t));
+    int ret = nvm_read(0, 1, 0, channel, sizeof(channel_t));
     if(ret < 0)
         return ret;
 
@@ -169,7 +167,7 @@ int nvm_readVfoChannelData(channel_t *channel)
 
 int nvm_readSettings(settings_t *settings)
 {
-    int ret = nvm_read(0, 1, 0, settings, sizeof(settings_t));
+    int ret = nvm_read(0, 2, 0, settings, sizeof(settings_t));
     if(ret < 0)
         return ret;
 
@@ -186,14 +184,14 @@ int nvm_readSettings(settings_t *settings)
 
 int nvm_writeSettings(const settings_t *settings)
 {
-    return nvm_write(0, 1, 0, settings, sizeof(settings_t));
+    return nvm_write(0, 2, 0, settings, sizeof(settings_t));
 }
 
 int nvm_writeSettingsAndVfo(const settings_t *settings, const channel_t *vfo)
 {
-    int ret = nvm_write(0, 1, 0, settings, sizeof(settings_t));
+    int ret = nvm_write(0, 2, 0, settings, sizeof(settings_t));
     if(ret < 0)
         return ret;
 
-    return nvm_write(0, 0, 0, vfo, sizeof(channel_t));
+    return nvm_write(0, 1, 0, vfo, sizeof(channel_t));
 }

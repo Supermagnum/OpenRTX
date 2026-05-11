@@ -7,118 +7,78 @@
 #ifndef NVMEM_ACCESS_H
 #define NVMEM_ACCESS_H
 
-#include "interfaces/nvmem.h"
 #include <stdint.h>
-#include <errno.h>
+#include "interfaces/nvmem.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 /**
+ * Obtain the descriptor of a given nonvolatile memory area.
+ *
+ * @param index: index of the nonvolatile memory area.
+ * @return a pointer to the memory descriptor or NULL if the requested
+ * descriptor does not exist.
+ */
+const struct nvmDescriptor *nvm_getDesc(const uint32_t index);
+
+/**
+ * Obtain the descriptor of a given nonvolatile memory area partition.
+ * The partition index zero represents the entire NVM area, while actual
+ * partitions information are accessed with an index from 1 to nbPart.
+ *
+ *
+ * @param idx: index of the nonvolatile memory area.
+ * @param part: index of the partition within the memory area.
+ * @param pInfo: pointer to a nvmPartition data structure.
+ * @return zero on success, a negative error code otherwise.
+ */
+int nvm_getPart(const uint32_t idx, const uint32_t part,
+                struct nvmPartition *pInfo);
+
+/**
  * Perform a byte-aligned read operation on a nonvolatile memory.
+ * This function allows to read data from an NVM device starting at a given
+ * offset from the beginning of the device.
  *
- * @param dev: NVM device number.
- * @param part: partition number, -1 for direct device access.
- * @param address: offset for the read operation.
- * @param data: pointer to a buffer where to store the data read.
- * @param len: number of bytes to read.
- * @return zero on success, a negative error code otherwise.
- */
-int nvm_read(const uint32_t dev, const int part, uint32_t offset, void *data,
-             size_t len);
-
-/**
- * Perform a write operation on a nonvolatile memory.
- *
- * @param dev: NVM device number.
- * @param part: partition number, -1 for direct device access.
- * @param offset: offset for the write operation.
- * @param data: pointer to a buffer containing the data to write.
- * @param len: number of bytes to write.
- * @return zero on success, a negative error code otherwise.
- */
-int nvm_write(const uint32_t dev, const int part, uint32_t offset, const void *data,
-              size_t len);
-
-/**
- * Perform an erase operation on a nonvolatile memory. Acceptable offset and
- * size depend on characteristics of the underlying device.
- *
- * @param dev: NVM device number.
- * @param part: partition number, -1 for direct device access.
- * @param offset: offset for the erase operation.
- * @param size: size of the area to be erased.
- * @return zero on success, a negative error code otherwise.
- */
-int nvm_erase(const uint32_t dev, const int part, uint32_t offset, size_t size);
-
-/**
- * Perform a byte-aligned read operation on an NVM area.
- *
- * @param area: pointer to the NVM are descriptor.
+ * @param idx: index of the nonvolatile memory area.
+ * @param part: partition number.
  * @param offset: offset for the read operation.
  * @param data: pointer to a buffer where to store the data read.
  * @param len: number of bytes to read.
  * @return zero on success, a negative error code otherwise.
  */
-static inline int nvm_devRead(const struct nvmDevice *dev, uint32_t offset,
-                              void *data, size_t len)
-{
-    if((offset + len) > dev->size)
-        return -EINVAL;
-
-    return dev->ops->read(dev, offset, data, len);
-}
+int nvm_read(const uint32_t idx, const uint32_t part, uint32_t offset,
+             void *data, size_t len);
 
 /**
- * Perform a byte-aligned write operation on an NVM area. If the underlying
- * device requires state syncing, a sync operation is performed at the end of
- * the write.
+ * Perform a write operation on a nonvolatile memory.
+ * This function allows to write data to an NVM device starting at a given
+ * offset from the beginning of the device.
  *
- * @param area: pointer to the NVM are descriptor.
+ * @param idx: index of the nonvolatile memory area.
+ * @param part: partition number.
  * @param offset: offset for the write operation.
  * @param data: pointer to a buffer containing the data to write.
  * @param len: number of bytes to write.
  * @return zero on success, a negative error code otherwise.
  */
-static inline int nvm_devWrite(const struct nvmDevice *dev, uint32_t offset,
-                               const void *data, size_t len)
-{
-    if(dev->ops->write == NULL)
-        return -ENOTSUP;
-
-    if((offset + len) > dev->size)
-        return -EINVAL;
-
-    return dev->ops->write(dev, offset, data, len);
-}
+int nvm_write(const uint32_t idx, const uint32_t part, uint32_t offset,
+              const void *data, size_t len);
 
 /**
- * Perform an erase operation on an NVM area. Acceptable offset and size depend
- * on the NVM device the area belongs to.
+ * Perform an erase operation on a nonvolatile memory. Acceptable offset and
+ * size depend on characteristics of the underlying device.
  *
- * @param area: pointer to the NVM are descriptor.
+ * @param idx: index of the nonvolatile memory area.
+ * @param part: partition number.
  * @param offset: offset for the erase operation.
  * @param size: size of the area to be erased.
  * @return zero on success, a negative error code otherwise.
  */
-int nvm_devErase(const struct nvmDevice *dev, uint32_t offset, size_t size);
-
-/**
- * Sync device cache and state to its underlying hardware.
- * If the device does not support sync this function pointer is set to NULL.
- *
- * @param dev: pointer to NVM device descriptor.
- * @return 0 on success, negative errno code on fail.
- */
-static inline int nvm_devSync(const struct nvmDevice *dev)
-{
-    if(dev->ops->sync == NULL)
-        return -ENOTSUP;
-
-    return dev->ops->sync(dev);
-}
+int nvm_erase(const uint32_t idx, const uint32_t part, uint32_t offset,
+              size_t size);
 
 #ifdef __cplusplus
 }

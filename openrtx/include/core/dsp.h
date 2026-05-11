@@ -10,6 +10,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <string.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -58,6 +59,29 @@ static inline void dsp_removeDcOffset(struct dcBlock *dcb, int16_t *buffer,
     for (size_t i = 0; i < length; i++)
         buffer[i] = dsp_dcBlockFilter(dcb, buffer[i]);
 }
+
+/**
+ * Data structure holding the internal state of a decimation block.
+ */
+struct decimatorState {
+    int32_t accumulator;
+    uint32_t count;
+};
+
+/**
+ * @brief Run a single step of the oversampling decimation filter.
+ *
+ * Accumulates input samples and returns their truncated integer average
+ * once the oversampling factor number of samples have been collected.
+ *
+ * @param state: pointer to the decimator state.
+ * @param sample: pointer to the audio sample. Contains the value of the
+ * decimated output when the function returns true.
+ * @param ratio: sample decimation ratio.
+ * @return true when a decimated sample is ready, false otherwise.
+ */
+bool dsp_decimator(struct decimatorState *state, int16_t *sample,
+                   uint16_t ratio);
 
 #ifdef __cplusplus
 }

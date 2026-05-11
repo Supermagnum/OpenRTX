@@ -1,6 +1,6 @@
 /*
  * SPDX-FileCopyrightText: Copyright 2020-2026 OpenRTX Contributors
- * 
+ *
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
@@ -9,6 +9,7 @@
 #include "interfaces/delays.h"
 #include "interfaces/nvmem.h"
 #include "core/nvmem_access.h"
+#include "core/nvmem_device.h"
 #include "calibration/calibInfo_GDx.h"
 #include "drivers/SPI/spi_bitbang.h"
 #include "hwconfig.h"
@@ -22,23 +23,32 @@ static const struct W25QxCfg eflashCfg =
     .cs  = { FLASH_CS }
 };
 
-W25Qx_DEVICE_DEFINE(eflash, eflashCfg, 0x100000)  // 1 MB,  8 Mbit
-AT24Cx_DEVICE_DEFINE(eeprom, 0x10000)             // 64 kB, 512 kbit
+W25Qx_DEVICE_DEFINE(eflash, eflashCfg)
+AT24Cx_DEVICE_DEFINE(eeprom)
 
 static const struct nvmDescriptor nvmDevices[] =
 {
     {
         .name       = "External flash",
         .dev        = &eflash,
-        .partNum    = 0,
+        .baseAddr   = 0x00000000,
+        .size       = 0x100000,     // 1 MB,  8 Mbit
+        .nbPart     = 0,
         .partitions = NULL
     },
     {
         .name       = "EEPROM",
         .dev        = &eeprom,
-        .partNum    = 0,
+        .baseAddr   = 0x00000000,
+        .size       = 0x10000,      // 64 kB, 512 kbit
+        .nbPart     = 0,
         .partitions = NULL
     }
+};
+
+const struct nvmTable nvmTab = {
+    .areas = nvmDevices,
+    .nbAreas = ARRAY_SIZE(nvmDevices),
 };
 
 #if defined(PLATFORM_GD77)
@@ -116,14 +126,6 @@ void nvm_terminate()
 {
     W25Qx_terminate(&eflash);
     AT24Cx_terminate();
-}
-
-const struct nvmDescriptor *nvm_getDesc(const size_t index)
-{
-    if(index >= ARRAY_SIZE(nvmDevices))
-        return NULL;
-
-    return &nvmDevices[index];
 }
 
 void nvm_readCalibData(void *buf)

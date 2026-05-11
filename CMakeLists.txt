@@ -72,6 +72,7 @@ target_include_directories(app
 
     lib/minmea/include
     lib/qdec/include
+    lib/QRCode/include
 )
 
 target_sources(app
@@ -104,15 +105,15 @@ target_sources(app
     openrtx/src/rtx/rtx.cpp
     openrtx/src/rtx/OpMode_FM.cpp
     openrtx/src/rtx/OpMode_M17.cpp
-    openrtx/src/protocols/M17/M17DSP.cpp
-    openrtx/src/protocols/M17/M17Golay.cpp
-    openrtx/src/protocols/M17/M17Callsign.cpp
+    openrtx/src/protocols/M17/DSP.cpp
+    openrtx/src/protocols/M17/Golay.cpp
     openrtx/src/protocols/M17/Callsign.cpp
-    openrtx/src/protocols/M17/M17Modulator.cpp
-    openrtx/src/protocols/M17/M17Demodulator.cpp
-    openrtx/src/protocols/M17/M17FrameEncoder.cpp
-    openrtx/src/protocols/M17/M17FrameDecoder.cpp
-    openrtx/src/protocols/M17/M17LinkSetupFrame.cpp
+    openrtx/src/protocols/M17/MetaText.cpp
+    openrtx/src/protocols/M17/Modulator.cpp
+    openrtx/src/protocols/M17/Demodulator.cpp
+    openrtx/src/protocols/M17/FrameEncoder.cpp
+    openrtx/src/protocols/M17/FrameDecoder.cpp
+    openrtx/src/protocols/M17/LinkSetupFrame.cpp
 
     openrtx/src/ui/default/ui.c
     openrtx/src/ui/default/ui_main.c
@@ -140,4 +141,5 @@ target_sources(app
     subprojects/codec2/src/codebooknewamp1_energy.c
 
     lib/minmea/minmea.c
+    lib/QRCode/qrcode.c
 )
