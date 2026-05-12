@@ -81,6 +81,8 @@ python3 scripts/uf2conv.py <binary> -o openrtx_ttwrplus.uf2
 
 The T-TWR Plus (ESP32S3/Xtensa) target uses Zephyr RTOS and CMake instead of Meson cross-compilation. Board definitions live in `platform/targets/ttwrplus/`, and Zephyr configuration is in `platform/mcu/ESP32S3/zephyr.conf`. The `west.yml` manifest pins the Zephyr, MCUboot, and HAL Espressif versions.
 
+**Avoid** running **`ninja -C <dir>`** with no target against a build directory that includes Miosix-based firmware unless the **cross toolchain** for that directory is installed. Prefer **`meson compile -C <dir> openrtx_linux`** (or another explicit target), or use separate Meson build directories for **native** vs **cross** as shown above.
+
 ### Python Scripts
 
 Python scripts in `scripts/` should be run inside a virtual environment with dependencies from `requirements.txt`:

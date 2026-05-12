@@ -7,6 +7,8 @@ This project can be built with **libFuzzer** (LLVM's in-process, coverage-guided
 - **Clang** (libFuzzer is part of the compiler-rt runtime; use a recent LLVM/Clang).
 - Meson build configured with the fuzzing option.
 
+**Compiler note:** On many Linux distributions, **GCC** does not accept `-fsanitize=fuzzer`. If configuration or `ninja` fails with an error such as *unrecognized argument to `-fsanitize=` option: `fuzzer`*, configure the fuzzing build with **`CC=clang` and `CXX=clang++`** (see below), or use a **separate build directory** created only with Clang. The main OpenRTX native target may still be built with GCC in another directory.
+
 ## Building fuzz targets
 
 Configure and build with the `fuzzing` option:

@@ -22,6 +22,24 @@ The nightly builds are available here:
 
 Finally, the instructions on how to compile the OpenRTX firmware for hardware as well as emulation on Linux, are available on the [compilation instructions](https://openrtx.org/#/compiling) page on our website.
 
+### Building locally with Meson
+
+Meson generates **many targets** in one build directory: Linux emulators, unit tests, and **firmware** binaries for several radios. Running **`ninja -C <builddir>`** with no target name may therefore try to build **embedded** targets (for example `openrtx_md3x0` for TYT MD-3x0). Those firmware builds pull in **Miosix** and require the **ARM cross-compiler and environment** described in the [compilation instructions](https://openrtx.org/#/compiling) and [developers guide](https://openrtx.org/#/developers_guide?id=developers39-guide). On a typical desktop Linux install with only host GCC, that step can stop with an *unsupported compiler* error from Miosix. That is a **toolchain setup** issue, not necessarily a problem with the source tree.
+
+For **host-only** work (emulator and most unit tests on x86_64):
+
+```bash
+meson setup build
+meson compile -C build openrtx_linux
+# optional: meson test -C build "M17 Golay Unit Test"
+```
+
+For **Cortex-M firmware** (including MD-3x0 / Horse hardware), use `meson setup` with the appropriate **`--cross-file`** (`cross_cm4.txt`, `cross_cm7.txt`, …) and the Miosix-supported toolchain, as summarized in [AGENTS.md](./AGENTS.md).
+
+For **using the Linux SDL emulator** (menus, settings, keyboard): see [EMULATOR_LINUX_UI.md](./EMULATOR_LINUX_UI.md).
+
+Fuzz targets require **Clang**; see [FUZZING.md](./FUZZING.md).
+
 Have a look at the the [dedicated page](https://openrtx.org/#/user_guide) for detailed instructions on flashing the firmware to your radio, look at the OpenRTX website or reach out to us on our channels!
 
 ## M17 support
