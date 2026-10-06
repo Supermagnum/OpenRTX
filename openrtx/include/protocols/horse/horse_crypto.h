@@ -7,11 +7,12 @@
  *
  * Current implementation uses libsodium where available:
  *  - XChaCha20 stream cipher + BLAKE2b-based 32-bit MAC for voice frames
- *  - X25519 ECDH + XChaCha20-Poly1305 for session key wrapping (ECIES-style)
- *  - Ed25519 for digital signatures (without encryption)
+ *  - X25519 ECDH for session keys (LSF-bound KDF)
+ *  - Ed25519 for digital signatures
  *  - Argon2id (via crypto_pwhash) for passphrase-based key derivation
  *
- * All functions have fallback implementations for platforms without libsodium.
+ * Without libsodium every primitive returns false. There is no PBKDF2,
+ * cleartext, or stub-crypto fallback.
  */
 
 #ifndef HORSE_CRYPTO_H
@@ -25,25 +26,43 @@
 extern "C" {
 #endif
 
-#define HORSE_SESSION_KEY_BYTES  32
-#define HORSE_VOICE_TAG_BYTES    4
+#define HORSE_SESSION_KEY_BYTES 32
+#define HORSE_VOICE_TAG_BYTES 4
+#define HORSE_LSF_VERSION 2
+#define HORSE_SESSION_MSG_BYTES 46
+#define HORSE_PASSPHRASE_MAX 32
+#define HORSE_PASSPHRASE_MIN 8
+
+static inline bool horse_passphrase_ok(const char *passphrase, size_t len)
+{
+    return passphrase != NULL && len >= HORSE_PASSPHRASE_MIN
+        && len <= HORSE_PASSPHRASE_MAX;
+}
+#define HORSE_KDF_VERSION 1
+#define HORSE_KDF_SALT_BYTES 16
+#define HORSE_IDENTITY_STORE_VERSION 2
+/*
+ * Shared with horse_provision.py. 16384 B is the largest Argon2id memory
+ * cost justified for 192 KiB SRAM: equal to CODEC2_THREAD_STKSIZE, used
+ * at mode enable when the codec thread is idle. Heap headroom is in
+ * HORSE_AUDIT.md; runtime HWM unverified on the radio.
+ */
+#define HORSE_ARGON2ID_OPSLIMIT 2u
+#define HORSE_ARGON2ID_MEMLIMIT 16384u
+/* Direction byte in the voice tag: 0 = PTT originator to listeners. */
+#define HORSE_VOICE_DIR_FORWARD 0
 
 /* Horse identity keys (libsodium-native sizes). */
-#define HORSE_ED25519_PUBLICKEY_BYTES  32
-#define HORSE_ED25519_SECRETKEY_BYTES  64
-#define HORSE_X25519_PUBLICKEY_BYTES   32
-#define HORSE_X25519_SECRETKEY_BYTES   32
-
-/* AEAD used for session key wrapping (XChaCha20-Poly1305). */
-#define HORSE_AEAD_XCHACHA20_NONCE_BYTES 24
-#define HORSE_AEAD_TAG_BYTES             16
+#define HORSE_ED25519_PUBLICKEY_BYTES 32
+#define HORSE_ED25519_SECRETKEY_BYTES 64
+#define HORSE_X25519_PUBLICKEY_BYTES 32
+#define HORSE_X25519_SECRETKEY_BYTES 32
 
 /* Ed25519 signature sizes. */
-#define HORSE_ED25519_SIGNATURE_BYTES    64
+#define HORSE_ED25519_SIGNATURE_BYTES 64
 
 /* Identity key bundle stored/provisioned to the radio. */
-typedef struct
-{
+typedef struct {
     uint8_t version; /* must be 1 */
     uint8_t reserved[3];
 
@@ -54,60 +73,29 @@ typedef struct
     uint8_t x25519_sk[HORSE_X25519_SECRETKEY_BYTES];
 } __attribute__((packed)) horse_identity_keys_t;
 
-/* Session key wrap (ECIES-like):
- * - X25519 ECDH (ephemeral_sk * recipient_pk)
- * - Derive AEAD key via BLAKE2b generichash
- * - Encrypt session key with XChaCha20-Poly1305 (detached tag)
- *
- * Out:
- *  - ephemeral_pubkey_out[32]
- *  - ciphertext_out[32]
- *  - tag_out[16]
- */
-bool horse_crypto_ecies_encrypt_session_key(
-    const uint8_t *recipient_x25519_pubkey,
-    const uint8_t *session_key,
-    uint8_t *ephemeral_pubkey_out,
-    uint8_t *ciphertext_out,
-    uint8_t *tag_out);
+/* Voice frame encrypt: XChaCha20 with k_enc. Tag is keyed BLAKE2b with
+ * k_tag over dir || FN16 (no last-frame bit) || payload (ciphertext). */
+void horse_crypto_voice_encrypt(const uint8_t *k_enc, const uint8_t *k_tag,
+                                uint8_t dir, uint16_t frame_num,
+                                const uint8_t *nonce_96bit,
+                                const uint8_t *plaintext, size_t plaintext_len,
+                                uint8_t *ciphertext_out,
+                                uint8_t *tag_truncated_32bit);
 
-/* Session key unwrap, see horse_crypto_ecies_encrypt_session_key().
- * Input:
- *  - recipient_x25519_seckey[32]
- */
-bool horse_crypto_ecies_decrypt_session_key(
-    const uint8_t *ephemeral_pubkey,
-    const uint8_t *ciphertext,
-    const uint8_t *tag,
-    const uint8_t *recipient_x25519_seckey,
-    uint8_t *session_key_out);
+/* Voice frame decrypt with constant-time tag check. Missing/wrong tag fails. */
+bool horse_crypto_voice_decrypt(const uint8_t *k_enc, const uint8_t *k_tag,
+                                uint8_t dir, uint16_t frame_num,
+                                const uint8_t *nonce_96bit,
+                                const uint8_t *ciphertext,
+                                size_t ciphertext_len,
+                                const uint8_t *tag_truncated_32bit,
+                                uint8_t *plaintext_out);
 
-/* Voice frame encrypt: XChaCha20 stream cipher + 32-bit BLAKE2b MAC. */
-void horse_crypto_voice_encrypt(
-    const uint8_t *session_key,
-    const uint8_t *nonce_96bit,
-    const uint8_t *plaintext,
-    size_t plaintext_len,
-    uint8_t *ciphertext_out,
-    uint8_t *tag_truncated_32bit);
-
-/* Voice frame decrypt with MAC verification. */
-bool horse_crypto_voice_decrypt(
-    const uint8_t *session_key,
-    const uint8_t *nonce_96bit,
-    const uint8_t *ciphertext,
-    size_t ciphertext_len,
-    const uint8_t *tag_truncated_32bit,
-    uint8_t *plaintext_out);
-
-/* Derive key from passphrase (Argon2id where libsodium is available, PBKDF2 fallback otherwise). */
-bool horse_crypto_argon2id_derive(
-    const char *passphrase,
-    size_t passphrase_len,
-    const uint8_t *salt,
-    size_t salt_len,
-    uint8_t *key_out,
-    size_t key_len);
+/* Derive key from passphrase (Argon2id via libsodium). Uses
+ * HORSE_ARGON2ID_OPSLIMIT / HORSE_ARGON2ID_MEMLIMIT. No PBKDF2 path. */
+bool horse_crypto_argon2id_derive(const char *passphrase, size_t passphrase_len,
+                                  const uint8_t *salt, size_t salt_len,
+                                  uint8_t *key_out, size_t key_len);
 
 /* True when a real crypto backend (libsodium) is linked in. */
 bool horse_crypto_available(void);
@@ -115,10 +103,19 @@ bool horse_crypto_available(void);
 /* Generate an X25519 keypair (public, secret). */
 bool horse_crypto_x25519_keypair(uint8_t *pk_out, uint8_t *sk_out);
 
-/* Derive a 32-byte session key from X25519 ECDH + BLAKE2b. */
-bool horse_crypto_derive_session_key(const uint8_t *local_x25519_sk,
-                                     const uint8_t *remote_x25519_pk,
-                                     uint8_t *session_key_out);
+/*
+ * ECDH(local_sk, remote_pk) then KDF over shared || src || dst || eph_pk
+ * || flags || version to k_enc and k_tag. Any LSF field change in transit
+ * changes the keys, so every voice tag fails.
+ */
+bool horse_crypto_derive_session_keys(
+    const uint8_t *local_x25519_sk, const uint8_t *remote_x25519_pk,
+    const uint8_t src[6], const uint8_t dst[6], const uint8_t eph_pk[32],
+    uint8_t flags, uint8_t version, uint8_t k_enc_out[HORSE_SESSION_KEY_BYTES],
+    uint8_t k_tag_out[HORSE_SESSION_KEY_BYTES]);
+
+/* True when LSF protocol version is the one this build speaks. */
+bool horse_crypto_lsf_version_ok(uint8_t version);
 
 /* Build a 96-bit voice nonce from the 16-bit frame counter. */
 void horse_crypto_voice_nonce_from_fn(uint16_t frame_num,
@@ -126,40 +123,31 @@ void horse_crypto_voice_nonce_from_fn(uint16_t frame_num,
 
 /* Encrypt/decrypt a horse_identity_keys_t blob with a derived wrap key. */
 bool horse_crypto_encrypt_identity(const horse_identity_keys_t *identity,
-                                   const uint8_t *wrap_key,
-                                   size_t wrap_key_len,
-                                   uint8_t *blob_out,
-                                   size_t blob_cap,
+                                   const uint8_t *wrap_key, size_t wrap_key_len,
+                                   uint8_t *blob_out, size_t blob_cap,
                                    size_t *blob_len);
 
-bool horse_crypto_decrypt_identity(const uint8_t *blob,
-                                   size_t blob_len,
-                                   const uint8_t *wrap_key,
-                                   size_t wrap_key_len,
+bool horse_crypto_decrypt_identity(const uint8_t *blob, size_t blob_len,
+                                   const uint8_t *wrap_key, size_t wrap_key_len,
                                    horse_identity_keys_t *identity_out);
 
 bool horse_crypto_identity_fingerprint(const horse_identity_keys_t *identity,
                                        uint8_t fp_out[32]);
 
-/* Derive per-call frame auth key from a verified session Ed25519 signature. */
-bool horse_crypto_derive_frame_auth_key(const uint8_t session_signature[64],
-                                        uint8_t auth_key_out[32]);
+/* Build src||dst||eph_pk||flags||version (HORSE_SESSION_MSG_BYTES). */
+void horse_crypto_build_session_message(
+    const uint8_t src[6], const uint8_t dst[6], const uint8_t eph_pk[32],
+    uint8_t flags, uint8_t version,
+    uint8_t message_out[HORSE_SESSION_MSG_BYTES]);
 
-/* Build the 44-byte session message signed at the start of each transmission. */
-void horse_crypto_build_session_message(const uint8_t src[6],
-                                        const uint8_t dst[6],
-                                        const uint8_t eph_pk[32],
-                                        uint8_t message_out[44]);
-
-/* Compute or verify a 32-bit voice authentication tag (cleartext voice). */
-bool horse_crypto_voice_auth_tag(const uint8_t auth_key[32],
-                                 uint16_t frame_num,
-                                 const uint8_t *melpe96bits,
+/* 32-bit tag over dir || FN (no last-frame bit) || 12-byte payload. */
+bool horse_crypto_voice_auth_tag(const uint8_t k_tag[32], uint8_t dir,
+                                 uint16_t frame_num, const uint8_t *payload12,
                                  uint8_t tag_out[4]);
 
-bool horse_crypto_voice_auth_verify(const uint8_t auth_key[32],
+bool horse_crypto_voice_auth_verify(const uint8_t k_tag[32], uint8_t dir,
                                     uint16_t frame_num,
-                                    const uint8_t *melpe96bits,
+                                    const uint8_t *payload12,
                                     const uint8_t tag[4]);
 
 /* Sign data with Ed25519 (without encryption).
@@ -171,11 +159,8 @@ bool horse_crypto_voice_auth_verify(const uint8_t auth_key[32],
  *  - signature_out[64]: Ed25519 signature
  * Returns true on success, false on failure.
  */
-bool horse_crypto_sign(
-    const uint8_t *ed25519_secretkey,
-    const uint8_t *message,
-    size_t message_len,
-    uint8_t *signature_out);
+bool horse_crypto_sign(const uint8_t *ed25519_secretkey, const uint8_t *message,
+                       size_t message_len, uint8_t *signature_out);
 
 /* Verify Ed25519 signature (without decryption).
  * Input:
@@ -185,11 +170,30 @@ bool horse_crypto_sign(
  *  - signature[64]: Ed25519 signature to verify
  * Returns true if signature is valid, false otherwise.
  */
-bool horse_crypto_verify(
-    const uint8_t *ed25519_publickey,
-    const uint8_t *message,
-    size_t message_len,
-    const uint8_t *signature);
+bool horse_crypto_verify(const uint8_t *ed25519_publickey,
+                         const uint8_t *message, size_t message_len,
+                         const uint8_t *signature);
+
+void horse_crypto_memzero(void *buf, size_t len);
+
+/*
+ * TX is allowed only when libsodium is present, the keystore is unlocked,
+ * and the peer keys required by the selected mode exist. Both flags clear
+ * still means encrypt (legacy default) and therefore still requires crypto.
+ */
+bool horse_tx_allowed(bool encrypt_en, bool sign_en, bool crypto_available,
+                      bool keystore_unlocked, bool have_x25519_peer,
+                      bool have_ed25519_peer);
+
+/*
+ * Voice audio requires a valid ECDH session (k_tag) in every mode.
+ * Signed LSF also requires a verified session signature.
+ * Channel encrypt_en/sign_en must match the LSF flags (legacy both-clear
+ * still means encrypt).
+ */
+bool horse_rx_may_output_voice(bool lsf_encrypted, bool session_valid,
+                               bool lsf_signed, bool signature_ready,
+                               bool ch_encrypt, bool ch_sign);
 
 #ifdef __cplusplus
 }

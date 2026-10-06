@@ -218,6 +218,14 @@ void _ui_drawModeInfo(ui_state_t* ui_state)
         case OPMODE_HORSE:
         {
             rtxStatus_t rtxStatus = rtx_getCurrentStatus();
+            if(ui_state->horse_pass_edit)
+            {
+                gfx_print(layout.line2_pos, layout.line2_font, TEXT_ALIGN_CENTER,
+                          color_white, "Horse pass");
+                gfx_print(layout.line1_pos, layout.line1_font, TEXT_ALIGN_CENTER,
+                          color_white, "%s", ui_state->horse_pass_input);
+                break;
+            }
             if(rtxStatus.horseLsfOk)
             {
                 gfx_drawSymbol(layout.line2_pos, layout.line2_symbol_size, TEXT_ALIGN_LEFT,
@@ -233,8 +241,24 @@ void _ui_drawModeInfo(ui_state_t* ui_state)
             {
                 const char *dst = strnlen(rtxStatus.destination_address, 10) == 0
                     ? currentLanguage->broadcast : rtxStatus.destination_address;
-                gfx_print(layout.line2_pos, layout.line2_font, TEXT_ALIGN_CENTER,
-                          color_white, "Horse #%s", dst);
+                if(rtxStatus.horseError == HORSE_ERR_NO_CRYPTO)
+                    gfx_print(layout.line2_pos, layout.line2_font, TEXT_ALIGN_CENTER,
+                              color_white, "Horse: no crypto");
+                else if(rtxStatus.horseError == HORSE_ERR_NO_KEYS)
+                    gfx_print(layout.line2_pos, layout.line2_font, TEXT_ALIGN_CENTER,
+                              color_white, "Horse: no keys");
+                else if(rtxStatus.horseError == HORSE_ERR_CALL_LIMIT)
+                    gfx_print(layout.line2_pos, layout.line2_font, TEXT_ALIGN_CENTER,
+                              color_white, "Horse: call limit");
+                else if(rtxStatus.horseError == HORSE_ERR_TX_CRYPTO)
+                    gfx_print(layout.line2_pos, layout.line2_font, TEXT_ALIGN_CENTER,
+                              color_white, "Horse: TX crypto");
+                else if(rtxStatus.horseError == HORSE_ERR_RNG)
+                    gfx_print(layout.line2_pos, layout.line2_font, TEXT_ALIGN_CENTER,
+                              color_white, "Horse: RNG");
+                else
+                    gfx_print(layout.line2_pos, layout.line2_font, TEXT_ALIGN_CENTER,
+                              color_white, "Horse #%s", dst);
             }
             break;
         }
@@ -247,13 +271,34 @@ void _ui_drawFrequency()
     freq_t freq = platform_getPttStatus() ? last_state.channel.tx_frequency
                                           : last_state.channel.rx_frequency;
 
-    // Print big numbers frequency
     char freq_str[16] = {0};
-    sniprintf(freq_str, sizeof(freq_str), "%lu.%06lu", (freq / 1000000lu), (freq % 1000000lu));
-    stripTrailingZeroes(freq_str);
+    sniprintf(freq_str, sizeof(freq_str), "%03lu.%05lu",
+              (freq / 1000000lu), (freq % 1000000lu) / 10);
 
-    gfx_print(layout.line3_large_pos, layout.line3_large_font, TEXT_ALIGN_CENTER,
-              color_white, "%s", freq_str);
+    size_t len = strlen(freq_str);
+    char main_str[16] = {0};
+    char small_str[3] = {0};
+    strncpy(main_str, freq_str, len - 2);
+    strncpy(small_str, freq_str + len - 2, 2);
+
+    fontSize_t small_font = FONT_SIZE_5PT;
+    if (layout.line3_large_font > FONT_SIZE_6PT)
+    {
+        small_font = (fontSize_t)(layout.line3_large_font - 2);
+    }
+
+    uint16_t main_width = gfx_getTextWidth(layout.line3_large_font, main_str);
+    uint16_t small_width = gfx_getTextWidth(small_font, small_str);
+    uint16_t total_width = main_width + small_width;
+    int16_t start_x = (CONFIG_SCREEN_WIDTH - total_width) / 2;
+
+    point_t main_pos = { (uint16_t)start_x, layout.line3_large_pos.y };
+    gfx_print(main_pos, layout.line3_large_font, TEXT_ALIGN_LEFT,
+              color_white, "%s", main_str);
+
+    point_t small_pos = { (uint16_t)(start_x + main_width), layout.line3_large_pos.y };
+    gfx_print(small_pos, small_font, TEXT_ALIGN_LEFT,
+              color_white, "%s", small_str);
 }
 
 void _ui_drawVFOMiddleInput(ui_state_t* ui_state)
@@ -276,10 +321,7 @@ void _ui_drawVFOMiddleInput(ui_state_t* ui_state)
         {
             // Replace Rx frequency with underscorses
             if(ui_state->input_position == 1)
-            {
-                strncpy(ui_state->new_rx_freq_buf, ">Rx:___.____", sizeof(ui_state->new_rx_freq_buf) - 1);
-                ui_state->new_rx_freq_buf[sizeof(ui_state->new_rx_freq_buf) - 1] = '\0';
-            }
+                strcpy(ui_state->new_rx_freq_buf, ">Rx:___.____");
             ui_state->new_rx_freq_buf[insert_pos] = input_char;
             gfx_print(layout.line2_pos, layout.input_font, TEXT_ALIGN_CENTER,
                       color_white, ui_state->new_rx_freq_buf);
@@ -306,10 +348,7 @@ void _ui_drawVFOMiddleInput(ui_state_t* ui_state)
         else
         {
             if(ui_state->input_position == 1)
-            {
-                strncpy(ui_state->new_tx_freq_buf, ">Tx:___.____", sizeof(ui_state->new_tx_freq_buf) - 1);
-                ui_state->new_tx_freq_buf[sizeof(ui_state->new_tx_freq_buf) - 1] = '\0';
-            }
+                strcpy(ui_state->new_tx_freq_buf, ">Tx:___.____");
             ui_state->new_tx_freq_buf[insert_pos] = input_char;
             gfx_print(layout.line3_large_pos, layout.input_font, TEXT_ALIGN_CENTER,
                       color_white, ui_state->new_tx_freq_buf);
@@ -380,13 +419,21 @@ void _ui_drawMainVFO(ui_state_t* ui_state)
     _ui_drawMainTop(ui_state);
     _ui_drawModeInfo(ui_state);
 
-    #if defined(CONFIG_M17) || defined(CONFIG_HORSE)
+#ifdef CONFIG_HORSE
     rtxStatus_t status = rtx_getCurrentStatus();
-    bool showFreq = (status.opMode != OPMODE_M17 && status.opMode != OPMODE_HORSE)
-        || (status.opMode == OPMODE_M17 && status.lsfOk == false)
-        || (status.opMode == OPMODE_HORSE && status.horseLsfOk == false);
+    bool showFreq = (status.opMode != OPMODE_HORSE)
+        || (status.horseLsfOk == false);
+#ifdef CONFIG_M17
+    if(status.opMode == OPMODE_M17)
+        showFreq = (status.lsfOk == false);
+#endif
     if(showFreq)
-    #endif
+#elif defined(CONFIG_M17)
+    rtxStatus_t status = rtx_getCurrentStatus();
+    bool showFreq = (status.opMode != OPMODE_M17)
+        || (status.opMode == OPMODE_M17 && status.lsfOk == false);
+    if(showFreq)
+#endif
         _ui_drawFrequency();
 
     _ui_drawMainBottom();
@@ -406,13 +453,21 @@ void _ui_drawMainMEM(ui_state_t* ui_state)
     _ui_drawMainTop(ui_state);
     _ui_drawModeInfo(ui_state);
 
-    #if defined(CONFIG_M17) || defined(CONFIG_HORSE)
+#ifdef CONFIG_HORSE
     rtxStatus_t status = rtx_getCurrentStatus();
-    bool showChFreq = (status.opMode != OPMODE_M17 && status.opMode != OPMODE_HORSE)
-        || (status.opMode == OPMODE_M17 && status.lsfOk == false)
-        || (status.opMode == OPMODE_HORSE && status.horseLsfOk == false);
+    bool showChFreq = (status.opMode != OPMODE_HORSE)
+        || (status.horseLsfOk == false);
+#ifdef CONFIG_M17
+    if(status.opMode == OPMODE_M17)
+        showChFreq = (status.lsfOk == false);
+#endif
     if(showChFreq)
-    #endif
+#elif defined(CONFIG_M17)
+    rtxStatus_t status = rtx_getCurrentStatus();
+    bool showChFreq = (status.opMode != OPMODE_M17)
+        || (status.opMode == OPMODE_M17 && status.lsfOk == false);
+    if(showChFreq)
+#endif
     {
         _ui_drawBankChannel();
         _ui_drawFrequency();

@@ -36,34 +36,46 @@ public:
 
     bool start();
     void sendPreamble();
-    void sendFrame(const frame_t& frame);
+    void sendFrame(const frame_t &frame);
     void stop();
 
     void invertPhase(bool status);
+
+    static constexpr size_t captureSamplesPerFrame()
+    {
+        return FRAME_SYMBOLS * (48000 / SYMBOL_RATE);
+    }
+
+    void beginCapture(int16_t *buf, size_t cap);
+    size_t captureLength() const;
+    void endCapture();
 
 private:
     void symbolsToBaseband();
     void sendBaseband();
 
-    static constexpr size_t TX_SAMPLE_RATE     = 48000;
+    static constexpr size_t TX_SAMPLE_RATE = 48000;
     static constexpr size_t SAMPLES_PER_SYMBOL = TX_SAMPLE_RATE / SYMBOL_RATE;
-    static constexpr size_t FRAME_SAMPLES      = FRAME_SYMBOLS * SAMPLES_PER_SYMBOL;
-    static constexpr float  RRC_GAIN          = 23000.0f;
-    static constexpr float  RRC_OFFSET        = 0.0f;
+    static constexpr size_t FRAME_SAMPLES = FRAME_SYMBOLS * SAMPLES_PER_SYMBOL;
+    static constexpr float RRC_GAIN = 23000.0f;
+    static constexpr float RRC_OFFSET = 0.0f;
 
     std::array<int8_t, FRAME_SYMBOLS> symbols;
     std::unique_ptr<int16_t[]> baseband_buffer;
-    stream_sample_t* idleBuffer;
+    stream_sample_t *idleBuffer;
     streamId outStream;
     pathId outPath;
     bool txRunning;
     bool invPhase;
+    int16_t *captureBuf;
+    size_t captureCap;
+    size_t captureLen;
 
 #if defined(PLATFORM_MD3x0) || defined(PLATFORM_MDUV3x0)
-    M17::PwmCompensator pwmComp;
+    PwmCompensator pwmComp;
 #endif
 };
 
-}  // namespace horse
+} // namespace horse
 
-#endif  // HORSE_MODULATOR_H
+#endif // HORSE_MODULATOR_H

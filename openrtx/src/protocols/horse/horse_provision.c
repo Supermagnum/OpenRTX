@@ -7,7 +7,6 @@
 #include "protocols/horse/horse_provision.h"
 #include "protocols/horse/horse_keystore.h"
 #include "protocols/horse/horse_crypto.h"
-#include "core/state.h"
 #include <string.h>
 
 #ifdef PLATFORM_LINUX
@@ -15,8 +14,8 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <sys/stat.h>
-#elif defined(PLATFORM_MD3x0) || defined(PLATFORM_MDUV3x0) || \
-    defined(PLATFORM_MD9600)
+#elif defined(PLATFORM_MD3x0) || defined(PLATFORM_MDUV3x0) \
+    || defined(PLATFORM_MD9600)
 #include "usb_vcom.h"
 #endif
 
@@ -27,8 +26,7 @@
 #define MSG_CONFIRM 0x04U
 #define MSG_ERROR 0xFFU
 
-typedef struct
-{
+typedef struct {
     uint8_t version;
     uint8_t type;
     uint16_t len;
@@ -47,8 +45,8 @@ static ssize_t prov_read(void *buf, size_t len)
     if (prov_fd < 0)
         return -1;
     return read(prov_fd, buf, len);
-#elif defined(PLATFORM_MD3x0) || defined(PLATFORM_MDUV3x0) || \
-    defined(PLATFORM_MD9600)
+#elif defined(PLATFORM_MD3x0) || defined(PLATFORM_MDUV3x0) \
+    || defined(PLATFORM_MD9600)
     return vcom_readBlock(buf, len);
 #else
     (void)buf;
@@ -63,8 +61,8 @@ static ssize_t prov_write(const void *buf, size_t len)
     if (prov_fd < 0)
         return -1;
     return write(prov_fd, buf, len);
-#elif defined(PLATFORM_MD3x0) || defined(PLATFORM_MDUV3x0) || \
-    defined(PLATFORM_MD9600)
+#elif defined(PLATFORM_MD3x0) || defined(PLATFORM_MDUV3x0) \
+    || defined(PLATFORM_MD9600)
     return vcom_writeBlock(buf, len);
 #else
     (void)buf;
@@ -88,26 +86,36 @@ static void prov_send(uint8_t type, const void *payload, uint16_t len)
 
 static void prov_handle_identity(const uint8_t *payload, uint16_t len)
 {
-    if (len < sizeof(horse_identity_keys_t))
-    {
+    if (len < sizeof(horse_identity_keys_t)) {
         prov_send(MSG_ERROR, "bad identity size", 17);
         return;
     }
 
     const horse_identity_keys_t *identity =
         (const horse_identity_keys_t *)payload;
-    const char *pass = state.settings.horse_passphrase;
-    size_t pass_len = strnlen(pass, sizeof state.settings.horse_passphrase);
 
-    if (!horse_keystore_store_plaintext(identity, pass, pass_len))
-    {
+    if (identity->version != 1) {
+        prov_send(MSG_ERROR, "bad identity version", 20);
+        return;
+    }
+    if (memcmp(identity->ed25519_sk + HORSE_ED25519_PUBLICKEY_BYTES,
+               identity->ed25519_pk, HORSE_ED25519_PUBLICKEY_BYTES)
+        != 0) {
+        prov_send(MSG_ERROR, "bad ed25519 sk", 14);
+        return;
+    }
+    if (!horse_keystore_has_passphrase()) {
+        prov_send(MSG_ERROR, "no passphrase", 13);
+        return;
+    }
+
+    if (!horse_keystore_store_with_held(identity)) {
         prov_send(MSG_ERROR, "store failed", 12);
         return;
     }
 
     uint8_t fp[32];
-    if (!horse_keystore_fingerprint(fp))
-    {
+    if (!horse_keystore_fingerprint(fp)) {
         prov_send(MSG_ERROR, "fingerprint failed", 18);
         return;
     }
@@ -126,10 +134,14 @@ static void prov_feed_byte(uint8_t b)
         return;
 
     horse_prov_hdr_t *hdr = (horse_prov_hdr_t *)rx_buf;
-    if (hdr->version != HORSE_PROV_VERSION)
-    {
+    if (hdr->version != HORSE_PROV_VERSION) {
         memmove(rx_buf, rx_buf + 1, rx_len - 1);
         rx_len--;
+        return;
+    }
+
+    if (hdr->len > sizeof(rx_buf) - sizeof(horse_prov_hdr_t)) {
+        rx_len = 0;
         return;
     }
 
@@ -139,17 +151,16 @@ static void prov_feed_byte(uint8_t b)
 
     const uint8_t *payload = rx_buf + sizeof(horse_prov_hdr_t);
 
-    switch (hdr->type)
-    {
-    case MSG_HELLO:
-        prov_send(MSG_HELLO_ACK, NULL, 0);
-        break;
-    case MSG_SEND_IDENTITY:
-        prov_handle_identity(payload, hdr->len);
-        break;
-    default:
-        prov_send(MSG_ERROR, "unknown message", 15);
-        break;
+    switch (hdr->type) {
+        case MSG_HELLO:
+            prov_send(MSG_HELLO_ACK, NULL, 0);
+            break;
+        case MSG_SEND_IDENTITY:
+            prov_handle_identity(payload, hdr->len);
+            break;
+        default:
+            prov_send(MSG_ERROR, "unknown message", 15);
+            break;
     }
 
     size_t extra = rx_len - need;

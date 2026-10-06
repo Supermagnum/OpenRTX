@@ -9,6 +9,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include <string.h>
 #include "core/datatypes.h"
 #include "rtx/rtx.h"
 
@@ -202,11 +203,10 @@ typedef struct
 __attribute__((packed)) m17Contact_t; // 6B
 
 
+#ifdef CONFIG_HORSE
 /******************************************************************************
  *                         HORSE MODE                                         *
  ******************************************************************************/
-
-#include "protocols/horse/horse_crypto.h"
 
 /**
  * Data structure containing all and only the information for Horse channels.
@@ -222,16 +222,13 @@ typedef struct
 }
 __attribute__((packed)) horseInfo_t; // 4B
 
-/**
- * Data structure describing Horse-specific contact fields (callsign, public key).
- */
-typedef struct
+static inline void horse_info_reset(horseInfo_t *info)
 {
-    uint8_t address[6];
-    uint8_t x25519_pk[HORSE_X25519_PUBLICKEY_BYTES];
-    uint8_t ed25519_pk[HORSE_ED25519_PUBLICKEY_BYTES];
+    if (info == NULL)
+        return;
+    memset(info, 0, sizeof(*info));
 }
-__attribute__((packed)) horseContact_t; // 70B
+#endif
 
 
 /******************************************************************************
@@ -279,7 +276,9 @@ typedef struct
         fmInfo_t    fm;            //< Information block for FM channels
         dmrInfo_t   dmr;           //< Information block for DMR channels
         m17Info_t   m17;           //< Information block for M17 channels
+#ifdef CONFIG_HORSE
         horseInfo_t horse;         //< Information block for Horse channels
+#endif
     };
 }
 __attribute__((packed)) channel_t; // 59B
@@ -294,13 +293,12 @@ typedef struct
 
     union
     {
-        dmrContact_t   dmr;     //< DMR specific contact info
-        m17Contact_t  m17;     //< M17 specific contact info
-        horseContact_t horse;  //< Horse specific contact info
+        dmrContact_t  dmr;      //< DMR specific contact info
+        m17Contact_t  m17;      //< M17 specific contact info
     }
-    info; // up to 70B (horseContact_t)
+    info; // 6B
 }
-__attribute__((packed)) contact_t; // 103B
+__attribute__((packed)) contact_t; // 39B
 
 /**
  * Data structure describing a bank header.
