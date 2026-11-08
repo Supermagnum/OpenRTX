@@ -13,6 +13,7 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -59,9 +60,16 @@ def gnupg_home(tmp_path, monkeypatch):
 
 
 def _gpg(*args, check=True, input_bytes=None):
+    # Pin the stamp to this process's clock and a modern digest.
+    # GnuPG's own clock can run ahead of the helper on a loaded
+    # runner, and a SHA-1 binding signature is rejected outright.
+    now = str(int(time.time()))
     return subprocess.run(
         ["gpg", "--batch", "--yes", "--pinentry-mode", "loopback",
-         "--passphrase", ""] + list(args),
+         "--passphrase", "",
+         "--faked-system-time", now,
+         "--cert-digest-algo", "SHA512",
+         "--digest-algo", "SHA512"] + list(args),
         input=input_bytes,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,

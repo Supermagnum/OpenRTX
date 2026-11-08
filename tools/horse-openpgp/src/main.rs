@@ -269,10 +269,76 @@ fn notations_from_sig(sig: &sequoia_openpgp::packet::Signature) -> Vec<(String, 
     out
 }
 
-/// Reference time for policy checks. A few seconds ahead absorbs gpg
-/// second-rounding so freshly minted keys are not "not yet valid".
-fn policy_time() -> SystemTime {
-    SystemTime::now() + Duration::from_secs(60)
+/// Sequoia's `CLOCK_SKEW_TOLERANCE` (30 minutes). `Cert::with_policy`
+/// passes an explicit time, and `signature_alive` then uses a zero
+/// tolerance, so that cushion does not apply unless we add it.
+const POLICY_CLOCK_SKEW: Duration = Duration::from_secs(30 * 60);
+
+fn bump_latest(latest: &mut Option<SystemTime>, t: SystemTime) {
+    if latest.map(|prev| t > prev).unwrap_or(true) {
+        *latest = Some(t);
+    }
+}
+
+fn consider_sig(
+    latest: &mut Option<SystemTime>,
+    sig: &sequoia_openpgp::packet::Signature,
+) {
+    if let Some(t) = sig.signature_creation_time() {
+        bump_latest(latest, t);
+    }
+    for emb in sig.embedded_signatures() {
+        if let Some(t) = emb.signature_creation_time() {
+            bump_latest(latest, t);
+        }
+    }
+}
+
+/// Newest signature creation time on the certificate, including
+/// embedded primary-key binding signatures.
+fn latest_signature_time(cert: &Cert) -> Option<SystemTime> {
+    let mut latest = None;
+    for sig in cert.primary_key().signatures() {
+        consider_sig(&mut latest, sig);
+    }
+    for uid in cert.userids() {
+        for sig in uid.signatures() {
+            consider_sig(&mut latest, sig);
+        }
+    }
+    for ua in cert.user_attributes() {
+        for sig in ua.signatures() {
+            consider_sig(&mut latest, sig);
+        }
+    }
+    for ka in cert.keys().subkeys() {
+        for sig in ka.signatures() {
+            consider_sig(&mut latest, sig);
+        }
+    }
+    latest
+}
+
+/// Reference times for `Cert::with_policy`. GnuPG stamps new
+/// signatures with its own clock, which on a loaded CI runner can
+/// sit more than a minute ahead of `SystemTime::now`. A signature
+/// creation time inside the skew window is tried first so the
+/// binding signature is alive; times far from now are left alone.
+fn policy_reference_times(cert: &Cert) -> Vec<Option<SystemTime>> {
+    let now = SystemTime::now();
+    let mut times = Vec::new();
+    if let Some(sig_t) = latest_signature_time(cert) {
+        let ahead = sig_t.duration_since(now).unwrap_or(Duration::ZERO);
+        let behind = now.duration_since(sig_t).unwrap_or(Duration::ZERO);
+        if (ahead <= POLICY_CLOCK_SKEW) && (behind <= POLICY_CLOCK_SKEW) {
+            times.push(Some(sig_t + Duration::from_secs(1)));
+        }
+    }
+    times.push(Some(now + POLICY_CLOCK_SKEW));
+    times.push(Some(now + Duration::from_secs(60)));
+    times.push(Some(now));
+    times.push(None);
+    times
 }
 
 /// Run `f` with a ValidCert. Fresh gpg keys sometimes fail StandardPolicy
@@ -285,32 +351,34 @@ where
     F: FnOnce(ValidCert<'_>) -> Result<R>,
 {
     let std = StandardPolicy::new();
-    let times = [
-        Some(policy_time()),
-        Some(SystemTime::now()),
-        None,
-    ];
-    let mut last = None;
-    for t in times {
-        match cert.with_policy(&std, t) {
+    let times = policy_reference_times(cert);
+    // Keep the first failure. Later times are earlier clocks, and
+    // their "not yet alive" error hides a policy rejection.
+    let mut first_err = None;
+    for t in &times {
+        match cert.with_policy(&std, *t) {
             Ok(vc) => return f(vc),
-            Err(e) => last = Some(e),
+            Err(e) => {
+                if first_err.is_none() {
+                    first_err = Some(e);
+                }
+            }
         }
     }
     if allow_unmarked {
         // SAFETY: explicit opt-in for throwaway/CI radio keys. Callers still
         // select subkeys by key flags after accepting any binding signature.
         let null = unsafe { NullPolicy::new() };
-        for t in times {
-            if let Ok(vc) = cert.with_policy(&null, t) {
+        for t in &times {
+            if let Ok(vc) = cert.with_policy(&null, *t) {
                 return f(vc);
             }
         }
     }
-    Err(anyhow!(
-        "certificate policy: {}",
-        last.map(|e| e.to_string()).unwrap_or_else(|| "unknown".into())
-    ))
+    match first_err {
+        Some(e) => Err(e.context("certificate policy")),
+        None => Err(anyhow!("certificate policy: unknown")),
+    }
 }
 
 fn inspect(allowlist: Option<PathBuf>) -> Result<()> {
@@ -602,5 +670,31 @@ mod tests {
         let seed = [7u8; 32];
         let sk = Ed25519SigningKey::from_bytes(&seed);
         check_ed25519_pair(&seed, sk.verifying_key().as_bytes()).unwrap();
+    }
+
+    fn cert_at(offset: Duration) -> Cert {
+        let t = SystemTime::now() + offset;
+        CertBuilder::general_purpose(Some("horse@example.test"))
+            .set_creation_time(t)
+            .generate()
+            .unwrap()
+            .0
+    }
+
+    #[test]
+    fn skewed_binding_signature_is_accepted() {
+        let cert = cert_at(Duration::from_secs(5 * 60));
+        with_valid_cert(&cert, false, |_| Ok(())).unwrap();
+    }
+
+    #[test]
+    fn far_future_binding_signature_is_rejected() {
+        let cert = cert_at(Duration::from_secs(48 * 60 * 60));
+        let err = with_valid_cert(&cert, false, |_| Ok(())).unwrap_err();
+        let msg = format!("{:#}", err);
+        assert!(
+            msg.contains("binding signature"),
+            "{msg}"
+        );
     }
 }
