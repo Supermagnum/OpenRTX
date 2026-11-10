@@ -216,11 +216,16 @@ subdir('lib/miosix-kernel')
 ##
 ## Current git commit or tag
 ##
-r = run_command('git', 'describe', '--tags', '--dirty', '--always')
-if r.returncode() != 0
-  # it failed
+git_version_opt = get_option('git_version')
+if git_version_opt != ''
+  git_version = '"' + git_version_opt + '"'
+else
+  r = run_command('git', 'describe', '--tags', '--dirty', '--always')
+  if r.returncode() != 0
+    # it failed
+  endif
+  git_version = '"' + r.stdout().strip() + '"'
 endif
-git_version  = '"'+r.stdout().strip()+'"'
 openrtx_def += {'GIT_VERSION': git_version}
 
 ##
@@ -486,6 +491,15 @@ if get_option('ubsan')
   linux_c_args   += '-fsanitize=undefined'
   linux_cpp_args += '-fsanitize=undefined'
   linux_l_args   += '-fsanitize=undefined'
+endif
+
+# dsp.cpp:19 left-shift of a negative sample is UB (see
+# docs/horse/UPSTREAM_ISSUE_dsp.md).
+# Do not change dsp.cpp; skip the shift sanitizer so Horse DC-block loopback
+# can complete under -Db_sanitize=address,undefined.
+if get_option('b_sanitize') != 'none' or get_option('asan') or get_option('ubsan')
+  linux_c_args   += '-fno-sanitize=shift'
+  linux_cpp_args += '-fno-sanitize=shift'
 endif
 
 
@@ -758,6 +772,7 @@ foreach k, v : md3x0_def
     md3x0_args += '-D@0@=@1@'.format(k, v)
   endif
 endforeach
+md3x0_args += ['-fstack-usage', '-Wstack-usage=16384']
 
 mduv3x0_args = []
 foreach k, v : mduv3x0_def
