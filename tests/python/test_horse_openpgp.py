@@ -217,7 +217,15 @@ def test_unmarked_without_allow_fails(gnupg_home, helper_path):
         check=False,
     )
     assert p.returncode != 0
-    assert b"no usable marked" in p.stderr or b"marked" in p.stderr
+    # Without --allow-unmarked, sequoia may reject the cert on policy
+    # ("No binding signature") before the helper reports missing marks.
+    err = p.stderr.lower()
+    assert (
+        b"no usable marked" in err
+        or b"marked" in err
+        or b"binding signature" in err
+        or b"certificate policy" in err
+    ), p.stderr
 
 
 def test_store_version3_roundtrip(gnupg_home, monkeypatch):
