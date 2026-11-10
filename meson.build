@@ -74,6 +74,12 @@ horse_src = ['openrtx/src/protocols/horse/HorseFrameEncoder.cpp',
              'openrtx/src/protocols/horse/HorseVoiceCodec.cpp',
              'openrtx/src/protocols/horse/melpe_horse.c']
 
+horse_frame_test_src = ['openrtx/src/protocols/horse/HorseFrameEncoder.cpp',
+                        'openrtx/src/protocols/horse/HorseFrameDecoder.cpp',
+                        'openrtx/src/protocols/horse/HorseVoiceCodec.cpp',
+                        'openrtx/src/protocols/horse/melpe_horse.c',
+                        'openrtx/src/core/crc.c']
+
 
 openrtx_inc = ['openrtx/include', 'platform']
 
@@ -1316,7 +1322,28 @@ m17_replay_test = executable('m17_replay_test',
                              kwargs  : m17_replay_test_opts)
 
 
+horse_frame_test = executable('horse_frame_test',
+                              sources : horse_frame_test_src + ['tests/unit/horse_frame.cpp'],
+                              include_directories : openrtx_inc,
+                              c_args : linux_c_args,
+                              cpp_args : linux_cpp_args,
+                              link_args : linux_l_args)
+
+
+
+horse_codec_test = executable('horse_codec_test',
+                              sources : ['openrtx/src/protocols/horse/melpe_horse.c',
+                                         'tests/unit/horse_codec.cpp'],
+                              include_directories : openrtx_inc,
+                              dependencies : [codec2_dep],
+                              c_args : linux_c_args,
+                              cpp_args : linux_cpp_args,
+                              link_args : linux_l_args)
+
+
 test('M17 Golay Unit Test',   m17_golay_test)
+test('Horse Codec Unit Test', horse_codec_test)
+test('Horse Frame Unit Test', horse_frame_test)
 test('M17 Viterbi Unit Test', m17_viterbi_test)
 test('M17 Demodulator Test',  m17_demodulator_test)
 test('M17 RRC Test',          m17_rrc_test)
