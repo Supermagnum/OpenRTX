@@ -69,7 +69,10 @@ openrtx_src = ['openrtx/src/core/state.c',
                'openrtx/src/protocols/M17/FrameDecoder.cpp',
                'openrtx/src/protocols/M17/LinkSetupFrame.cpp']
 
-horse_src = []
+horse_src = ['openrtx/src/protocols/horse/HorseFrameEncoder.cpp',
+             'openrtx/src/protocols/horse/HorseFrameDecoder.cpp',
+             'openrtx/src/protocols/horse/HorseVoiceCodec.cpp',
+             'openrtx/src/protocols/horse/melpe_horse.c']
 
 
 openrtx_inc = ['openrtx/include', 'platform']
@@ -151,6 +154,11 @@ if meson.is_cross_build()
 elif sodium_dep.found()
   horse_deps += sodium_dep
   horse_crypto_args += '-DHAVE_LIBSODIUM'
+endif
+
+linux_deps = []
+if sodium_dep.found()
+  linux_deps += sodium_dep
 endif
 
 # CODEC2, open source speech codec, compile from source on embedded
@@ -1306,6 +1314,7 @@ m17_replay_test_opts = unit_test_opts + {'include_directories' : m17_replay_inc,
 m17_replay_test = executable('m17_replay_test',
                              sources : unit_test_src + m17_replay_src + m17_signal_src + ['tests/unit/M17_replay.cpp'],
                              kwargs  : m17_replay_test_opts)
+
 
 test('M17 Golay Unit Test',   m17_golay_test)
 test('M17 Viterbi Unit Test', m17_viterbi_test)
