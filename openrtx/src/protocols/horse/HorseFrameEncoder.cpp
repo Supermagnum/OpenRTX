@@ -7,6 +7,7 @@
 #include "protocols/horse/HorseFrameEncoder.hpp"
 #include "protocols/horse/HorseUtils.hpp"
 #include "protocols/horse/HorseVoiceCodec.hpp"
+#include "protocols/horse/horse_crypto.h"
 #include "core/crc.h"
 #include <cstring>
 

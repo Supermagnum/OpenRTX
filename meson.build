@@ -75,13 +75,22 @@ horse_src = ['openrtx/src/protocols/horse/HorseFrameEncoder.cpp',
              'openrtx/src/protocols/horse/melpe_horse.c',
              'openrtx/src/protocols/horse/HorseModulator.cpp',
              'openrtx/src/protocols/horse/HorseDemodulator.cpp',
+             'openrtx/src/protocols/horse/horse_crypto.c',
+             'openrtx/src/protocols/horse/horse_crypto_worker.c',
+             'openrtx/src/protocols/horse/horse_randombytes.c',
+             'openrtx/src/protocols/horse/horse_keystore.c',
+             'openrtx/src/protocols/horse/horse_peers.c',
+             'openrtx/src/protocols/horse/horse_heap.c',
              'openrtx/src/core/horse_codec.c']
 
 horse_frame_test_src = ['openrtx/src/protocols/horse/HorseFrameEncoder.cpp',
                         'openrtx/src/protocols/horse/HorseFrameDecoder.cpp',
                         'openrtx/src/protocols/horse/HorseVoiceCodec.cpp',
                         'openrtx/src/protocols/horse/melpe_horse.c',
-                        'openrtx/src/core/crc.c']
+                        'openrtx/src/core/crc.c',
+                        'openrtx/src/protocols/horse/horse_crypto.c',
+                        'openrtx/src/protocols/horse/horse_heap.c',
+                        'openrtx/src/protocols/horse/horse_randombytes.c']
 
 
 openrtx_inc = ['openrtx/include', 'platform']
@@ -165,10 +174,6 @@ elif sodium_dep.found()
   horse_crypto_args += '-DHAVE_LIBSODIUM'
 endif
 
-linux_deps = []
-if sodium_dep.found()
-  linux_deps += sodium_dep
-endif
 
 # CODEC2, open source speech codec, compile from source on embedded
 # Always download the subproject — the Zephyr/CMake build needs the source
@@ -453,6 +458,13 @@ linux_mod17_def = linux_def + {'CONFIG_SCREEN_WIDTH': '128', 'CONFIG_SCREEN_HEIG
 linux_c_args   = ['-ffunction-sections', '-fdata-sections', '-std=gnu17']
 linux_cpp_args = ['-ffunction-sections', '-fdata-sections', '-std=c++14']
 linux_l_args   = ['-lm', '-lreadline']
+
+linux_deps = [sdl_dep, threads_dep, codec2_dep]
+if sodium_dep.found()
+  linux_deps += sodium_dep
+  linux_c_args += '-DHAVE_LIBSODIUM'
+  linux_cpp_args += '-DHAVE_LIBSODIUM'
+endif
 
 # MacOS Clang linker uses -deadstrip instead of --gc-sections
 if build_machine.system() == 'darwin'
@@ -830,7 +842,7 @@ endforeach
 linux_opts = {
   'sources'            : linux_default_src,
   'include_directories': linux_inc,
-  'dependencies'       : [sdl_dep, threads_dep, codec2_dep],
+  'dependencies'       : linux_deps,
   'c_args'             : linux_c_args,
   'cpp_args'           : linux_cpp_args,
   'link_args'          : linux_l_args
@@ -839,7 +851,7 @@ linux_opts = {
 linux_small_opts = {
     'sources'            : linux_default_src,
     'include_directories': linux_inc,
-    'dependencies'       : [sdl_dep, threads_dep, codec2_dep],
+    'dependencies'       : linux_deps,
     'c_args'             : linux_small_c_args,
     'cpp_args'           : linux_small_cpp_args,
     'link_args'          : linux_l_args
@@ -848,7 +860,7 @@ linux_small_opts = {
 linux_mod17_opts = {
     'sources'            : linux_mod17_src,
     'include_directories': linux_inc,
-    'dependencies'       : [sdl_dep, threads_dep, codec2_dep],
+    'dependencies'       : linux_deps,
     'c_args'             : linux_mod17_c_args,
     'cpp_args'           : linux_mod17_cpp_args,
     'link_args'          : linux_l_args
@@ -1238,7 +1250,7 @@ linux = alias_target('linux', linux_targets)
 unit_test_opts = {'c_args'             : linux_c_args,
                   'cpp_args'           : linux_cpp_args,
                   'include_directories': linux_inc,
-                  'dependencies'       : [sdl_dep, threads_dep, codec2_dep, catch2_dep],
+                  'dependencies'       : linux_deps + [catch2_dep],
                   'link_args'          : linux_l_args}
 
 unit_test_src = linux_src + ui_src_default
@@ -1342,6 +1354,7 @@ horse_codec_test = executable('horse_codec_test',
                               c_args : linux_c_args,
                               cpp_args : linux_cpp_args,
                               link_args : linux_l_args)
+
 
 
 test('M17 Golay Unit Test',   m17_golay_test)

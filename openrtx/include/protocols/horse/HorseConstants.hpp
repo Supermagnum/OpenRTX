@@ -51,7 +51,6 @@ static constexpr uint16_t SIG_FRAME_COUNT = 6;
 static constexpr uint16_t VOICE_FN_MAX = 0x6FFF;
 
 /* Option C voice: 18 info bytes -> M17 DATA_PUNCTURE (34 B) + 12 B spare. */
-static constexpr size_t HORSE_X25519_PUBLICKEY_BYTES = 32;
 static constexpr size_t HORSE_VOICE_INFO_BYTES = 18;
 static constexpr size_t HORSE_VOICE_CODED_BYTES = 46;
 static constexpr size_t HORSE_VOICE_PUNCT_BYTES = 34;

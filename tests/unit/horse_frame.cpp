@@ -12,6 +12,7 @@
 #include "protocols/horse/HorseUtils.hpp"
 #include "protocols/horse/HorseVoiceCodec.hpp"
 #include "protocols/horse/HorseSoft.hpp"
+#include "protocols/horse/horse_crypto.h"
 #include <cstdio>
 #include <cstring>
 #include <cstdint>
@@ -177,6 +178,49 @@ static int test_voice_frame_number()
             fn0, fn1);
         return -1;
     }
+    return 0;
+}
+
+static int test_lsf_crypto_roundtrip()
+{
+    HorseFrameEncoder enc;
+    HorseFrameDecoder dec;
+    call_t src = { { 'H', 'O', 'R', 'S', 'E', '1' } };
+    call_t dst = { { 'H', 'O', 'R', 'S', 'E', '2' } };
+    uint8_t eph_pk[32];
+    for (size_t i = 0; i < sizeof eph_pk; i++)
+        eph_pk[i] = (uint8_t)(i + 1);
+    frame_t frames[LSF_OPENING_FRAMES];
+
+    enc.encodeLsf(src, dst, eph_pk, 0x01, frames);
+    for (size_t i = 0; i < LSF_OPENING_FRAMES; i++) {
+        if (dec.decodeFrame(frames[i]) != HorseFrameType::LINK_SETUP)
+            return -1;
+    }
+    if (!dec.lsfReady())
+        return -1;
+
+    uint8_t out_pk[32];
+    uint8_t flags = 0;
+    uint8_t version = 0;
+    if (!dec.getLsfCrypto(out_pk, &flags, &version))
+        return -1;
+    if (flags != 0x01 || version != LSF_PROTOCOL_VERSION
+        || std::memcmp(out_pk, eph_pk, 32) != 0)
+        return -1;
+    return 0;
+}
+
+static int test_lsf_unknown_version_is_rejected()
+{
+    if (horse_crypto_lsf_version_ok(99))
+        return -1;
+    if (horse_crypto_lsf_version_ok(1))
+        return -1;
+    if (!horse_crypto_lsf_version_ok(LSF_PROTOCOL_VERSION))
+        return -1;
+    if (LSF_PROTOCOL_VERSION != 2)
+        return -1;
     return 0;
 }
 
@@ -711,6 +755,10 @@ int main()
     if (test_lsf_roundtrip() != 0)
         return -1;
     if (test_lsf_crc_tamper() != 0)
+        return -1;
+    if (test_lsf_crypto_roundtrip() != 0)
+        return -1;
+    if (test_lsf_unknown_version_is_rejected() != 0)
         return -1;
     if (test_v1_sync_not_recognized() != 0)
         return -1;
