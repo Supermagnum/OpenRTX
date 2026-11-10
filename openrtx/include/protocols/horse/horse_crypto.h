@@ -131,8 +131,8 @@ bool horse_crypto_decrypt_identity(const uint8_t *blob, size_t blob_len,
                                    const uint8_t *wrap_key, size_t wrap_key_len,
                                    struct horse_identity_keys *identity_out);
 
-bool horse_crypto_identity_fingerprint(const struct horse_identity_keys *identity,
-                                       uint8_t fp_out[32]);
+bool horse_crypto_identity_fingerprint(
+    const struct horse_identity_keys *identity, uint8_t fp_out[32]);
 
 /* Build src||dst||eph_pk||flags||version (HORSE_SESSION_MSG_BYTES). */
 void horse_crypto_build_session_message(

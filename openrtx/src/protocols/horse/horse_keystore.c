@@ -65,12 +65,10 @@ _Static_assert(offsetof(struct horse_identity_store, opslimit) == 8,
                "store.opslimit");
 _Static_assert(offsetof(struct horse_identity_store, memlimit) == 12,
                "store.memlimit");
-_Static_assert(offsetof(struct horse_identity_store, salt) == 16,
-               "store.salt");
+_Static_assert(offsetof(struct horse_identity_store, salt) == 16, "store.salt");
 _Static_assert(offsetof(struct horse_identity_store, blob_len) == 32,
                "store.blob_len");
-_Static_assert(offsetof(struct horse_identity_store, blob) == 34,
-               "store.blob");
+_Static_assert(offsetof(struct horse_identity_store, blob) == 34, "store.blob");
 
 static struct horse_identity_keys unlocked_identity;
 static bool identity_unlocked;

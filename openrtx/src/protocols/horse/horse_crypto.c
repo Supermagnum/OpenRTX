@@ -368,8 +368,8 @@ bool horse_crypto_decrypt_identity(const uint8_t *blob, size_t blob_len,
 #endif
 }
 
-bool horse_crypto_identity_fingerprint(const struct horse_identity_keys *identity,
-                                       uint8_t fp_out[32])
+bool horse_crypto_identity_fingerprint(
+    const struct horse_identity_keys *identity, uint8_t fp_out[32])
 {
     uint8_t pub[HORSE_ED25519_PUBLICKEY_BYTES + HORSE_X25519_PUBLICKEY_BYTES];
 

@@ -30,8 +30,8 @@ int main(void)
                  + (size_t)CODEC2_THREAD_STKSIZE
                  + (size_t)CODEC2_THREAD_STKSIZE;
     if (budget_claim > HORSE_HEAP_BUDGET_BYTES) {
-        std::printf("horse_heap: static claim %zu > budget %u\n",
-                    budget_claim, HORSE_HEAP_BUDGET_BYTES);
+        std::printf("horse_heap: static claim %zu > budget %u\n", budget_claim,
+                    HORSE_HEAP_BUDGET_BYTES);
         return 1;
     }
     if (HORSE_HEAP_BUDGET_BYTES > HORSE_MD3X0_HEAP_BYTES) {
