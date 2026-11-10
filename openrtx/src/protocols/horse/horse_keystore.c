@@ -6,8 +6,10 @@
 
 #include "protocols/horse/horse_keystore.h"
 #include "protocols/horse/horse_randombytes.h"
+#include <stddef.h>
 #include <string.h>
 #include <pthread.h>
+#include <assert.h>
 
 #ifdef HAVE_LIBSODIUM
 #include <sodium.h>
@@ -25,6 +27,15 @@
 
 #define HORSE_STORE_MAGIC 0x484B5354U /* "HKST" */
 
+/*
+ * MD-3x0 external W25Qx is 16 MiB at nvmDevices[0] base 0x00000000
+ * (platform/drivers/NVM/nvmem_MDx.c). Native CPS/codeplug and calibration
+ * live in security registers and vendor records, not in this high
+ * region. 0x00FE0000 is the last 128 KiB of the 16 MiB chip
+ * (0x01000000 - 0x20000), reserved for the Horse identity blob so it
+ * does not overlap the OpenRTX settings sector (internal flash sector
+ * 11 at 0x080E0000) or the security-register calib areas.
+ */
 #ifndef HORSE_IDENTITY_NVM_OFFSET
 #define HORSE_IDENTITY_NVM_OFFSET 0x00FE0000U
 #endif
@@ -40,6 +51,23 @@ typedef struct {
     uint16_t blob_len;
     uint8_t blob[256];
 } __attribute__((packed)) horse_identity_store_t;
+
+/* Match scripts/horse_provision.py pack format (34 B header + 256 B blob). */
+_Static_assert(sizeof(horse_identity_store_t) == 290,
+               "horse_identity_store_t size");
+_Static_assert(offsetof(horse_identity_store_t, magic) == 0, "store.magic");
+_Static_assert(offsetof(horse_identity_store_t, store_version) == 4,
+               "store.store_version");
+_Static_assert(offsetof(horse_identity_store_t, kdf_version) == 5,
+               "store.kdf_version");
+_Static_assert(offsetof(horse_identity_store_t, opslimit) == 8,
+               "store.opslimit");
+_Static_assert(offsetof(horse_identity_store_t, memlimit) == 12,
+               "store.memlimit");
+_Static_assert(offsetof(horse_identity_store_t, salt) == 16, "store.salt");
+_Static_assert(offsetof(horse_identity_store_t, blob_len) == 32,
+               "store.blob_len");
+_Static_assert(offsetof(horse_identity_store_t, blob) == 34, "store.blob");
 
 static horse_identity_keys_t unlocked_identity;
 static bool identity_unlocked;

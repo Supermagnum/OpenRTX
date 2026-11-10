@@ -1,6 +1,8 @@
 # Upstream issue: UBSan left shift of negative value in `dsp_dcBlockFilter`
 
-Do not fix this in the fork. File against OpenRTX/OpenRTX.
+Do not fix this in the fork. Upstream PR:
+https://github.com/OpenRTX/OpenRTX/pull/564 (open as of 2026-11-10;
+waiting for upstream). Fork keeps `-fno-sanitize=shift` until merge.
 
 ## Reproduced on
 

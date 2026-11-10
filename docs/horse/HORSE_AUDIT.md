@@ -13,35 +13,35 @@ work list. Finding status:
 
 | Id | Status |
 |----|--------|
-| C1 voice MAC not session-keyed | fixed in `4e789cbf` / `16a5b677` (k_tag from ECDH) |
-| C2 TX cleartext fallback | fixed in `c6bdad06` (refuse TX; UI `horseError`) |
-| C3 demod correlator not Horse sync | fixed in `c6337821` / `4d301939` |
-| C4 signature chunk overflow | fixed in `c3f68754`; packing `13ac0cef` (5x12+4) |
-| C5 20 ms DMA vs 40 ms codec | fixed in `8b965e29` |
-| C6 FN / nonce layout | fixed in `08e6c3cb` / `4e789cbf` |
-| C7 Argon2 RAM / PBKDF2 | mitigated: 16 KiB Argon2id; no PBKDF2; heap headroom ~40 KiB (HWM unverified) |
-| C8 passphrase in `settings_t` | fixed in `4015daa2` (RAM-only); empty/short rejected (`HORSE_PASSPHRASE_MIN` 8) |
-| C9 `contact_t` growth | fixed in `1b79bbdb` (sidecar peers) |
-| C10 Ed25519 seed padded to 64 | fixed in `80404ce2` |
+| C1 voice MAC not session-keyed | fixed in `4e789cbf` / `16a5b677` (k_tag from ECDH); test `horse_crypto_test` |
+| C2 TX cleartext fallback | fixed in `c6bdad06` (refuse TX; UI `horseError`); test `horse_tx_fail_test` |
+| C3 demod correlator not Horse sync | fixed in `c6337821` / `4d301939`; test `horse_loopback_test` |
+| C4 signature chunk overflow | fixed in `c3f68754`; packing `13ac0cef` (5x12+4); test `horse_frame_test` |
+| C5 20 ms DMA vs 40 ms codec | fixed in `8b965e29`; test `horse_codec_test` |
+| C6 FN / nonce layout | fixed in `08e6c3cb` / `4e789cbf`; test `horse_crypto_test` |
+| C7 Argon2 RAM / PBKDF2 | fixed: 16 KiB Argon2id; no PBKDF2; `horse_heap` peak vs 53248 B budget (`horse_heap_test`); device HWM needs hardware (HARDWARE_TEST_PLAN step 1 / heap step) |
+| C8 passphrase in `settings_t` | fixed in `4015daa2` (RAM-only); empty/short rejected (`HORSE_PASSPHRASE_MIN` 8); test `horse_keystore_test` |
+| C9 `contact_t` growth | fixed in `1b79bbdb` (sidecar peers); `contact_t` 39 B / `settings_t` 84 B match upstream (`cps_layout_test`, `horse_settings_upstream.py`) |
+| C10 Ed25519 seed padded to 64 | fixed in `80404ce2`; test `horse_host_interop_test` |
 | C11 keyring hex/JSON | fixed in `80404ce2` / `31495ec7` (XDG files; `show` publics only) |
-| C12 encrypted RX without session | fixed in `c6bdad06` |
-| C13 MD-3x0 C5000 TX enable | fixed (driver `OPMODE_HORSE`); untested on hardware |
-| C14 RTX 512 B stack | mitigated: `txState` off RTX; sodium on 16 KiB worker (Argon2 HWM 4120 B) |
-| C15 keystore race / oversized hdr | mutex `fb86c4ed`; oversized `hdr->len` resets parser; host socket test |
-| C16 `horseInfo_t` garbage on mode switch | fixed in `1ca16357` |
-| C17 LDPC name vs repeat-2 | closed in v2: M17 option-C voice `0de39b89`; `ldpc_horse` removed |
-| C18 tests vs claims | improved: loopback; forge tests reject `"HVOICETAG"` (`horse_crypto.cpp`) |
+| C12 encrypted RX without session | fixed in `c6bdad06`; test `horse_session_modem` / loopback negatives |
+| C13 MD-3x0 C5000 TX enable | needs hardware: driver `OPMODE_HORSE` present; HARDWARE_TEST_PLAN step 3 |
+| C14 RTX 512 B stack | fixed: sodium on 16 KiB worker; `scripts/check_horse_stack_usage.py` enforced in ARM CI build |
+| C15 keystore race / oversized hdr / unauth provision | fixed: mutex `fb86c4ed`; oversized `hdr->len` resets; `MSG_SEND_IDENTITY` only in menu provision mode + fingerprint confirm + 120 s timeout (`horse_provision_sock_test`) |
+| C16 `horseInfo_t` garbage on mode switch | fixed in `1ca16357`; test `horse_info_test` |
+| C17 LDPC name vs repeat-2 | fixed in v2: M17 option-C voice `0de39b89`; `ldpc_horse` removed |
+| C18 tests vs claims | fixed: `horse_test_opmode_buffer_e2e` (encrypt/sign/combined via OpMode); `horse_session_modem` / loopback; RF needs hardware |
 | C19 `sodium_memzero` | fixed in `c6bdad06` / `fb86c4ed` |
-| C20 LSF has no FEC and no checksum | closed in v2: three M17-coded opening frames + CRC-16 `4003bcf2`; fragments `d2e4405d` |
-| C21 MD-3x0 Horse BW 12.5 vs M17 25 kHz | open; analysis below; no code change without measurement |
-| M17 `dsp.cpp:19` UBSan | upstream; see `UPSTREAM_ISSUE_dsp.md` (do not patch in this fork) |
-| `horse_keytool.py` | removed (`31495ec7`); use `scripts/horse_provision.py` |
-| LSF bind / channel flags | `b1f207f5` |
-| False-lock Hamming 0 + tag drop | `b9f6331c`; NCC floor removed `18a4d420` |
-| Native meson test vs ARM firmware | reverted `a5fc2f08`; procedure in `AGENTS.md` (`--no-rebuild`) |
-| Sanitizer Horse timeouts / `-fno-sanitize=shift` | `83e4a806` |
-| ECIES dead code | `c18faa08` |
-| Python/C identity interop | `3bb7439a` |
+| C20 LSF has no FEC and no checksum | fixed in v2: three M17-coded opening frames + CRC-16 `4003bcf2`; fragments `d2e4405d` |
+| C21 MD-3x0 Horse BW 12.5 vs M17 25 kHz | open; analysis below; no code change without measurement; HARDWARE_TEST_PLAN step 10 |
+| M17 `dsp.cpp:19` UBSan | waiting for upstream: OpenRTX/OpenRTX#564; fork keeps `-fno-sanitize=shift` (`83e4a806`) |
+| `horse_keytool.py` | fixed: removed (`31495ec7`); use `scripts/horse_provision.py` |
+| LSF bind / channel flags | fixed: `b1f207f5` |
+| False-lock Hamming 0 + tag drop | fixed: `b9f6331c`; NCC floor removed `18a4d420` |
+| Native meson test vs ARM firmware | fixed: reverted `a5fc2f08`; procedure in `AGENTS.md` (`--no-rebuild`) |
+| Sanitizer Horse timeouts / `-fno-sanitize=shift` | waiting for upstream with dsp.cpp:19 (#564) |
+| ECIES dead code | fixed: `c18faa08` |
+| Python/C identity interop | fixed: `3bb7439a`; test `horse_host_interop_test` |
 
 ---
 
@@ -187,18 +187,16 @@ succeeds and `OpMode_Horse.cpp` is part of the emulator binary.
 - **Proposed fix:** Dedicated frame type (or a reserved high range never
   used for voice). 96-bit nonce = `session_id || FN32`. Stop TX before wrap.
 
-### C7. Argon2id moderate (~256 MiB) vs STM32F405 -- high
+### C7. Argon2id moderate (~256 MiB) vs STM32F405 -- fixed (host) / needs hardware (device HWM)
 
-- **Where:** `horse_crypto.c` `crypto_pwhash`.
-- **What is wrong:** Early code used
-  `crypto_pwhash_OPSLIMIT_MODERATE` / `MEMLIMIT_MODERATE`. F405 has
-  192 KiB RAM. Current memlimit is 16 KiB (`crypto_pwhash` heap).
-  Without libsodium every crypto call fails closed; there is no
-  PBKDF2 / `crypto_utils` fallback.
-- **Confirmed:** `horse_crypto.c` `#else` returns false; no PBKDF2.
-- **Proposed fix:** F405-safe Argon2id parameters, same on the provision
-  PC. Do not claim PBKDF2 unless implemented and never mixed with
-  Argon2id blobs.
+- **Where:** `horse_crypto.c` `crypto_pwhash`; `horse_heap.*`.
+- **Fix:** Argon2id `opslimit=2` / `memlimit=16384`. No PBKDF2. Host
+  tracker `horse_heap_peak()` notes Argon2 + worker stack; budget
+  `HORSE_HEAP_BUDGET_BYTES` (53248) derived from MD-3x0 heap 89600 B.
+  Test: `horse_heap_test`. There is no `state.heap_usage` field in
+  upstream or this fork; device Info menu shows
+  `getHeapSize() - getCurrentFreeHeap()`. Large buffers stay on the
+  heap (not `.bss`). Device peak still needs HARDWARE_TEST_PLAN.
 
 ### C8. Passphrase stored in plaintext `settings_t` -- high
 
@@ -213,24 +211,16 @@ succeeds and `OpMode_Horse.cpp` is part of the emulator binary.
   keep in RAM, `sodium_memzero` on lock. If a settings field is
   required, store a verifier only.
 
-### C9. `contact_t` / `settings_t` layout change -- high (Linux CPS) / medium (MCU settings)
+### C9. `contact_t` / `settings_t` layout change -- fixed
 
-- **Where:** `cps.h` `horseContact_t` (70 B) grows `contact_t` from 39 B
-  to 103 B; `settings.h` grows `settings_t` by 33 B. `CPS_VERSION`
-  remains 0.1.
-- **What is wrong:** Linux `cps_io_libc.c` uses `sizeof(contact_t)` as
-  array stride -- old `.rtxc` files mis-parse. `horseInfo_t` (4 B) does
-  **not** grow `channel_t` (union already sized by `m17Info_t` 5 B).
-  Native MD-3x0 CPS is vendor records, not `sizeof(channel_t)`; Horse
-  fields are not stored in the TYT contact table (`cps_readContact`
-  sets DMR). MDx/Module17 settings CRC uses `sizeof(settings_t)`; old
-  blocks fail CRC and load defaults (wipe, not silent corruption).
-  CS7000 settings are not CRC-gated the same way; trailing bytes can
-  be garbage.
-- **Confirmed:** Packed struct comments vs native CPS translators vs
-  `cps_io_libc.c` stride.
-- **Proposed fix:** Bump `CPS_VERSION` with a versioned reader; do not
-  persist passphrase in `settings_t`; migrate settings by version.
+- **Fix:** Horse peers are a sidecar (`horse_peer_t`); `contact_t` remains
+  39 B. Passphrase is RAM-only; `settings_t` remains 84 B and matches
+  upstream (`tests/unit/horse_settings_upstream.py`). `horseInfo_t`
+  (4 B) fits the existing channel union. `cps_layout_test` asserts
+  packed sizes/offsets. `settings_t` stays append-only. Old `.rtxc`
+  files keep the upstream contact stride; MDx/CS7000 settings load
+  with the same `sizeof(settings_t)` CRC path as upstream when Horse
+  is off.
 
 ### C10. Provisioning packs a 32-byte Ed25519 seed into a 64-byte field -- critical (sign path)
 
@@ -263,7 +253,7 @@ succeeds and `OpMode_Horse.cpp` is part of the emulator binary.
 - **Proposed fix:** If LSF encrypted and `!sessionValid`, do not open
   RX audio and do not push frames.
 
-### C13. Horse TX never enables RF TX on MD-3x0 -- fixed (untested on hardware)
+### C13. Horse TX never enables RF TX on MD-3x0 -- needs hardware
 
 - **Was:** OpMode never called `radio_enableTx()`. Commit `465707c4`
   added the OpMode call after key agreement and `abortTx` →
@@ -277,27 +267,24 @@ succeeds and `OpMode_Horse.cpp` is part of the emulator binary.
   still goes through `radio_disableRtx()` → `C5000.stopAnalogTx()`.
 - **Untested on hardware.** Bandwidth vs M17 25 kHz is C21.
 
-### C14. RTX stack 512 B vs Horse work -- mitigated
+### C14. RTX stack 512 B vs Horse work -- fixed
 
-- **Was:** RTX stack 512 B with LDPC scratch and codec work on the RTX
-  thread. `ldpc_horse` (repeat-2) has since been removed (C17).
-- **Now:** Voice coding is M17 option-C on existing encoder/Viterbi;
-  libsodium runs on a dedicated 16 KiB worker (deepest Argon2 ~4120 B /
-  Ed25519 ~4048 B on host). `txState` / large buffers were moved off
-  the RTX stack. Codec uses a sized stack. Remaining risk: any new
-  Horse work accidentally placed on the 512 B RTX thread.
+- **Fix:** Voice coding is M17 option-C on existing encoder/Viterbi;
+  libsodium runs on a dedicated 16 KiB worker. RTX Horse functions must
+  stay under `RTX_THREAD_STKSIZE - 64`; worker deepest path under
+  `CODEC2_THREAD_STKSIZE - 2048`. Enforced by
+  `scripts/check_horse_stack_usage.py` on ARM `.su` files in the CI
+  `build` job after `openrtx_md3x0`.
 
-### C15. Provision parser and keystore have no mutex; `hdr->len` vs 320-byte buffer -- mitigated
+### C15. Provision parser / keystore / unauthenticated identity -- fixed
 
-- **Was:** oversized `hdr->len` could confuse the parser; keystore races
-  with RTX; unauthenticated `MSG_SEND_IDENTITY`.
-- **Now:** `hdr->len` above the remaining 320-byte buffer clears
-  `rx_len` (host socket test covers this). Keystore mutex in
-  `fb86c4ed`. Linux transport uses a Unix socket with `MSG_NOSIGNAL`,
-  short-write/`EAGAIN` loops, and client drop that resets `rx_len`
-  (SIGPIPE / mid-message disconnect). Remaining: identity replace
-  while TX is live is still a product concern; unauthenticated
-  provision over USB remains by design for a local cable.
+- **Fix:** `hdr->len` above the remaining 320-byte buffer clears
+  `rx_len`. Keystore mutex in `fb86c4ed`. `MSG_SEND_IDENTITY` is
+  accepted only while Settings > Horse Prov has opened a 120 s window;
+  the radio shows the public fingerprint and stores only after ENTER
+  (`horse_provision_confirm`). UI never calls the radio API. Host
+  tests: refuse outside mode, refuse after timeout, accept after
+  confirm (`horse_provision_sock_test`).
 
 ### C16. Mode cycle leaves garbage in `horseInfo_t` -- medium
 
@@ -329,15 +316,14 @@ succeeds and `OpMode_Horse.cpp` is part of the emulator binary.
   and new sync words (`dc8c906a`).
 - **Normative:** `docs/horse/HORSE_FEC_V2.md` section 7b.
 
-### C18. Tests do not cover the claims -- improved (medium remains for RF)
+### C18. Tests do not cover the claims -- fixed (RF needs hardware)
 
-Host analog loopback (`tests/unit/horse_loopback.cpp`) covers layers a–d
-(symbols, RRC, demod, full stream). Session-keyed voice MAC (C1) is
-covered by `tests/unit/horse_crypto.cpp`: a tag forged with the old
-public string `"HVOICETAG"` is rejected by
-`horse_crypto_voice_auth_verify` with the session `k_tag`. Firmware
-DC-block under UBSan still hits upstream `dsp.cpp:19`. RF / C5000
-paths remain untested on hardware.
+Host analog loopback (`tests/unit/horse_loopback.cpp`) covers layers a–d.
+Session-keyed voice MAC (C1) is covered by `tests/unit/horse_crypto.cpp`.
+Three-mode modem loopback is in `horse_session_modem.cpp`.
+`horse_test_opmode_buffer_e2e` drives `OpMode_Horse::sendTxVoiceFrame`
+for encrypt, sign, and combined (cleartext TX refused by C2). RF /
+C5000 paths remain needs-hardware (HARDWARE_TEST_PLAN steps 3–6).
 
 ### Cost figures (host, protocol v2)
 
@@ -499,31 +485,29 @@ session-keyed voice MAC (C1).
 
 ---
 
-## Suspicions (not filed as confirmed bugs)
+## Suspicions (resolved)
 
-- `HORSE_IDENTITY_NVM_OFFSET 0x00FE0000` on 16 MB W25Qx: not traced
-  against every MD-3x0 partition map.
-- Linux provisioning socket path defaults to
-  `$XDG_RUNTIME_DIR/openrtx_horse_prov.sock` (mode 0600); override
-  `OPENRTX_HORSE_PROV_SOCK`. Host tests cover SIGPIPE-safe disconnect
-  (`send(..., MSG_NOSIGNAL)` + drop client on `EPIPE`/`ECONNRESET`),
-  short-write/`EAGAIN` bounded send, and path mode; emulator
-  end-to-end with `openrtx_linux` still manual.
-- Identity fingerprint is BLAKE2b keyed `"HORSE-IDFP"` over
-  `ed25519_pk || x25519_pk` only (public keys). Older CONFIRM hashes
-  that covered the full identity including secrets are obsolete.
-- OpenPGP card-stub detection uses gpg colon field 15 (`+` / `#` /
-  card serial) on **ssb subkeys only** (primary may be offline/token);
-  see `horse_openpgp.py`. Extraction is `tools/horse-openpgp`
-  (sequoia), not pysequoia. Store version 3 is OpenPGP-wrapped packed
-  identity (pipes only). `--allow-unmarked` retries StandardPolicy
-  times then NullPolicy so fresh gpg keys do not flake CI; host interop
-  fails closed if extract fails when the helper is present. Usage:
-  `PROVISIONING.md`; CI tip: `TEST_RESULTS.md`.
-- MDx `data[1024]` overlay vs 128 KB sector 11: likely pre-existing;
-  passphrase makes blocks larger.
-- `horse_identity_store_t` is not packed: Linux vs ARM padding if both
-  used for the same blob.
+- `HORSE_IDENTITY_NVM_OFFSET 0x00FE0000`: last 128 KiB of the 16 MiB
+  W25Qx (`nvmem_MDx.c` area 0 size `0x1000000`). Calib is in security
+  registers; OpenRTX settings are internal flash sector 11 at
+  `0x080E0000`. Documented in `horse_keystore.c`. Device write still
+  needs hardware (HARDWARE_TEST_PLAN step 1).
+- Linux provisioning socket: host tests cover path/mode/SIGPIPE;
+  menu confirm is in `horse_provision_sock_test`. Emulator headless
+  E2E with `openrtx_linux` + `horse_provision.py` is possible
+  (`SDL_VIDEODRIVER=dummy` works; shell `key` can open Settings >
+  Horse Prov) but is not automated in meson yet because menu index
+  depends on `CONFIG_*` feature set; socket-level tests cover the
+  protocol. Manual: `PROVISIONING.md`.
+- Identity fingerprint: BLAKE2b keyed `"HORSE-IDFP"` over public keys
+  only (intentional).
+- OpenPGP: unchanged; see `PROVISIONING.md` / `TEST_RESULTS.md`.
+- MDx `data[1024]` overlay vs 128 KB sector 11: **pre-existing
+  upstream** in `nvmem_settings_MDx.c` (same layout on
+  `upstream/master`). Not a Horse regression; Horse no longer grows
+  `settings_t`. Tracked as upstream structural risk, not a Horse bug.
+- `horse_identity_store_t`: packed; `static_assert` on size 290 and
+  field offsets matching Python (`horse_keystore.c`).
 
 ---
 
