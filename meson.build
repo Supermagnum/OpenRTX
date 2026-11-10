@@ -1364,6 +1364,18 @@ horse_codec_test = executable('horse_codec_test',
 
 
 
+
+horse_info_test = executable('horse_info_test',
+                             sources : ['tests/unit/horse_info.cpp'],
+                             include_directories : openrtx_inc,
+                             c_args : linux_c_args,
+                             cpp_args : linux_cpp_args,
+                             link_args : linux_l_args)
+
+horse_tx_fail_test = executable('horse_tx_fail_test',
+                                sources : unit_test_src + ['tests/unit/horse_tx_fail.cpp'],
+                                kwargs : unit_test_opts)
+
 horse_loopback_test = executable('horse_loopback_test',
                                  sources : unit_test_src + horse_src + ['tests/unit/horse_loopback.cpp',
                                                             'tests/unit/horse_session_modem.cpp'],
@@ -1442,6 +1454,8 @@ test('Horse Peers Unit Test', horse_peers_test)
 test('Horse Keystore Unit Test', horse_keystore_test)
 test('Horse Randombytes Unit Test', horse_randombytes_test)
 test('Horse Loopback Unit Test', horse_loopback_test)
+test('Horse Info Reset Test', horse_info_test)
+test('Horse TX Crypto Fail Test', horse_tx_fail_test)
 test('Horse Codec Unit Test', horse_codec_test)
 test('Horse Frame Unit Test', horse_frame_test)
 test('M17 Viterbi Unit Test', m17_viterbi_test)
