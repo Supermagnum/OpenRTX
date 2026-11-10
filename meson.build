@@ -80,6 +80,7 @@ horse_src = ['openrtx/src/protocols/horse/HorseFrameEncoder.cpp',
              'openrtx/src/protocols/horse/horse_randombytes.c',
              'openrtx/src/protocols/horse/horse_keystore.c',
              'openrtx/src/protocols/horse/horse_peers.c',
+             'openrtx/src/protocols/horse/horse_provision.c',
              'openrtx/src/protocols/horse/horse_heap.c',
              'openrtx/src/core/horse_codec.c',
              'openrtx/src/rtx/OpMode_Horse.cpp']
