@@ -21,6 +21,9 @@
 #ifdef PLATFORM_TTWRPLUS
 #include "drivers/baseband/SA8x8.h"
 #endif
+#ifdef CONFIG_HORSE
+#include "protocols/horse/horse_provision.h"
+#endif
 
 /* UI main screen helper functions, their implementation is in "ui_main.c" */
 extern void _ui_drawMainBottom();
@@ -1066,6 +1069,56 @@ void _ui_drawSettingsAccessibility(ui_state_t* ui_state)
     _ui_drawMenuListValue(ui_state, ui_state->menu_selected, _ui_getAccessibilityEntryName,
                            _ui_getAccessibilityValueName);
 }
+
+#ifdef CONFIG_HORSE
+void _ui_drawHorseProvision(ui_state_t *ui_state)
+{
+    uint8_t fp[32];
+    char line[40];
+    unsigned i;
+
+    (void)ui_state;
+    gfx_clearScreen();
+    gfx_print(layout.top_pos, layout.top_font, TEXT_ALIGN_CENTER,
+              color_white, currentLanguage->horseProvision);
+
+    if (!horse_provision_mode_active()) {
+        gfx_printLine(1, 3, layout.top_h,
+                      CONFIG_SCREEN_HEIGHT - layout.bottom_h,
+                      layout.horizontal_pad, layout.top_font,
+                      TEXT_ALIGN_CENTER, color_white, "Timed out");
+        return;
+    }
+
+    if (horse_provision_pending_fingerprint(fp) == 0) {
+        for (i = 0; i < 8; i++)
+            sniprintf(line + (i * 2), 3, "%02X", fp[i]);
+        gfx_printLine(1, 4, layout.top_h,
+                      CONFIG_SCREEN_HEIGHT - layout.bottom_h,
+                      layout.horizontal_pad, layout.top_font,
+                      TEXT_ALIGN_CENTER, yellow_fab413, line);
+        for (i = 0; i < 8; i++)
+            sniprintf(line + (i * 2), 3, "%02X", fp[8 + i]);
+        gfx_printLine(2, 4, layout.top_h,
+                      CONFIG_SCREEN_HEIGHT - layout.bottom_h,
+                      layout.horizontal_pad, layout.top_font,
+                      TEXT_ALIGN_CENTER, yellow_fab413, line);
+        gfx_printLine(3, 4, layout.top_h,
+                      CONFIG_SCREEN_HEIGHT - layout.bottom_h,
+                      layout.horizontal_pad, layout.top_font,
+                      TEXT_ALIGN_CENTER, color_white, "ENTER=OK ESC=No");
+    } else {
+        gfx_printLine(1, 3, layout.top_h,
+                      CONFIG_SCREEN_HEIGHT - layout.bottom_h,
+                      layout.horizontal_pad, layout.top_font,
+                      TEXT_ALIGN_CENTER, color_white, "Waiting...");
+        gfx_printLine(2, 3, layout.top_h,
+                      CONFIG_SCREEN_HEIGHT - layout.bottom_h,
+                      layout.horizontal_pad, layout.top_font,
+                      TEXT_ALIGN_CENTER, color_white, "ESC exits");
+    }
+}
+#endif
 
 void _ui_drawSettingsReset2Defaults(ui_state_t* ui_state)
 {
