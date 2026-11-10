@@ -31,7 +31,11 @@ jobs:
       - name: install-deps
         run: |
           sudo apt update
-          sudo apt install -y git pkg-config build-essential meson libsdl2-dev libreadline-dev dfu-util cmake libusb-1.0-0 libusb-1.0-0-dev libcodec2-dev codec2 catch2 libsodium-dev
+          sudo apt install -y git pkg-config build-essential meson libsdl2-dev libreadline-dev dfu-util cmake libusb-1.0-0 libusb-1.0-0-dev libcodec2-dev codec2 catch2 libsodium-dev gnupg sq
+          # Ubuntu 24.04 ships sequoia-sq 0.33 (`sq version`, not --version).
+          sq version
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
       - name: Install uv
         uses: astral-sh/setup-uv@v7
       # gcovr is a standalone CLI rather than an import dependency, so install
@@ -45,12 +49,33 @@ jobs:
           source .venv/bin/activate
           uv pip install pynacl pyserial pytest ruff
           echo "${{ github.workspace }}/.venv/bin" >> "$GITHUB_PATH"
+      - name: Cache horse-openpgp cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            tools/horse-openpgp/target
+          # Include sources so a restored target/ cannot skip rebuilding
+          # an outdated release binary (mtime from cache looks "fresh").
+          key: horse-openpgp-${{ runner.os }}-${{ hashFiles('tools/horse-openpgp/Cargo.lock', 'tools/horse-openpgp/Cargo.toml', 'tools/horse-openpgp/src/**') }}
+      - name: Build horse-openpgp helper
+        run: |
+          cd tools/horse-openpgp
+          # Drop the binary so cargo always relinks after cache restore.
+          rm -f target/release/horse-openpgp target/release/horse-openpgp.d
+          cargo test --locked
+          cargo build --release --locked
+          test -x target/release/horse-openpgp
+          echo "HORSE_OPENPGP_HELPER=${{ github.workspace }}/tools/horse-openpgp/target/release/horse-openpgp" >> "$GITHUB_ENV"
+          echo "${{ github.workspace }}/tools/horse-openpgp/target/release" >> "$GITHUB_PATH"
       - name: setup meson
         run: |
           cd ${{github.workspace}}
           meson setup build -Db_coverage=true
       - name: Run unit tests
         env:
+          HORSE_OPENPGP_HELPER: ${{ env.HORSE_OPENPGP_HELPER }}
           HORSE_REQUIRE_CRYPTO: "1"
         run: meson test -C build --print-errorlogs --test-args '--reporter junit'
       - name: Publish Test Report
