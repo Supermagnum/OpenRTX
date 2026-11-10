@@ -69,6 +69,9 @@ openrtx_src = ['openrtx/src/core/state.c',
                'openrtx/src/protocols/M17/FrameDecoder.cpp',
                'openrtx/src/protocols/M17/LinkSetupFrame.cpp']
 
+horse_src = []
+
+
 openrtx_inc = ['openrtx/include', 'platform']
 
 ##
@@ -108,6 +111,47 @@ openrtx_inc += ['lib/QRCode/include']
 
 # QDEC, a very simple, header only, quadrature decoding library
 openrtx_inc += ['lib/qdec/include']
+
+
+# libsodium: native builds use the host package. Cortex-M4 Horse
+# targets use a pinned Autotools prebuilt (1.0.20, see
+# scripts/build_libsodium_cm4.sh and subprojects/libsodium.wrap).
+# Meson's external_project wrap injects a relative --includedir that
+# Autotools rejects, so the library is built by the script. Other
+# radios must not link it.
+sodium_dep = dependency('libsodium', required: false)
+
+horse_crypto_args = []
+horse_deps = []
+horse_cm4_sodium_dep = []
+if meson.is_cross_build()
+  fsmod = import('fs')
+  sodium_prefix = meson.current_build_dir() / 'sodium-cm4'
+  sodium_script = find_program('scripts/build_libsodium_cm4.sh')
+  if not fsmod.exists(sodium_prefix / 'lib' / 'libsodium.a')
+    message('Cross-building libsodium 1.0.20 for Cortex-M4')
+    sodium_rc = run_command(sodium_script, sodium_prefix, check: false)
+    if sodium_rc.returncode() != 0
+      warning('libsodium Cortex-M4 prebuild failed; MD-3x0 Horse crypto disabled')
+    endif
+  endif
+  if fsmod.exists(sodium_prefix / 'lib' / 'libsodium.a')
+    cc_host = meson.get_compiler('c')
+    sodium_lib = cc_host.find_library('sodium',
+                                      dirs: [sodium_prefix / 'lib'],
+                                      static: true,
+                                      required: false)
+    if sodium_lib.found()
+      horse_cm4_sodium_dep = [declare_dependency(
+          dependencies: sodium_lib,
+          compile_args: ['-I' + sodium_prefix / 'include', '-DSODIUM_STATIC'])]
+      horse_crypto_args += ['-DHAVE_LIBSODIUM', '-DSODIUM_STATIC']
+    endif
+  endif
+elif sodium_dep.found()
+  horse_deps += sodium_dep
+  horse_crypto_args += '-DHAVE_LIBSODIUM'
+endif
 
 # CODEC2, open source speech codec, compile from source on embedded
 # Always download the subproject — the Zephyr/CMake build needs the source
