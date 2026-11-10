@@ -81,7 +81,8 @@ horse_src = ['openrtx/src/protocols/horse/HorseFrameEncoder.cpp',
              'openrtx/src/protocols/horse/horse_keystore.c',
              'openrtx/src/protocols/horse/horse_peers.c',
              'openrtx/src/protocols/horse/horse_heap.c',
-             'openrtx/src/core/horse_codec.c']
+             'openrtx/src/core/horse_codec.c',
+             'openrtx/src/rtx/OpMode_Horse.cpp']
 
 horse_frame_test_src = ['openrtx/src/protocols/horse/HorseFrameEncoder.cpp',
                         'openrtx/src/protocols/horse/HorseFrameDecoder.cpp',
@@ -431,11 +432,11 @@ linux_inc = ['platform/targets/linux',
              'platform/drivers/audio',
              'platform/drivers/tones']
 
-linux_def = {'PLATFORM_LINUX': '', 'VP_USE_FILESYSTEM':''}
+linux_def = {'PLATFORM_LINUX': '', 'VP_USE_FILESYSTEM':'', 'CONFIG_HORSE': ''}
 
 sdl_dep     = dependency('SDL2',     required: false)
 threads_dep = dependency('threads',  required: false)
-linux_src  += openrtx_src
+linux_src  += openrtx_src + horse_src
 linux_inc  += openrtx_inc
 linux_def  += openrtx_def
 linux_def  += {'sniprintf':'snprintf', 'vsniprintf':'vsnprintf'}
