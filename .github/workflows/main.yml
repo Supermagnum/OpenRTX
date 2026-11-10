@@ -170,6 +170,7 @@ jobs:
             meson compile -C build_cm7 openrtx_cs7000p_wrap &&
             meson compile -C build_cm7 openrtx_cs7000p_dfu &&
             meson compile -C build_cm4 openrtx_rt4d_bin &&
+            python3 scripts/check_horse_stack_usage.py build_cm4 &&
             chmod -R a+rX build_linux build_cm4 build_cm7
       # The build runs as root in the container, so the binaries land in the
       # bind-mounted workspace owned by root. Copying rather than moving (as
