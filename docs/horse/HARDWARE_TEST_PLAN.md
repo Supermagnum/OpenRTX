@@ -29,7 +29,13 @@ passphrase fails closed (no TX, `Horse: no keys` or equivalent, not
 cleartext). Empty and short passphrases never unlock.
 
 **Closes:** identity NVM offset vs MD-3x0 partition map; provisioning
-path on device; Argon2id 16 KiB heap vs remaining SRAM at unlock.
+path on device (including Settings > Horse Prov fingerprint confirm);
+Argon2id 16 KiB heap vs remaining SRAM at unlock.
+
+**Also record:** Info menu "Used heap" value
+(`getHeapSize() - getCurrentFreeHeap()`) immediately after unlock and
+again after one encrypt+sign PTT. Compare to host budget
+`HORSE_HEAP_BUDGET_BYTES` (53248) and MD-3x0 heap 89600 B (C7).
 
 ## 2. RX of a recorded baseband file (if the hardware allows injection)
 

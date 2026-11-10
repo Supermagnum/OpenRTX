@@ -12,6 +12,7 @@
  */
 
 #include "protocols/horse/horse_crypto.h"
+#include "protocols/horse/horse_heap.h"
 #include <string.h>
 
 #ifdef HAVE_LIBSODIUM
@@ -171,12 +172,16 @@ bool horse_crypto_argon2id_derive(const char *passphrase, size_t passphrase_len,
      * salt_len parameter is ignored in this path.
      */
     (void)salt_len;
+    /* C7: Argon2id memlimit is the dominant Horse heap claim. */
+    horse_heap_acquire(HORSE_ARGON2ID_MEMLIMIT);
     if (crypto_pwhash(key_out, key_len, passphrase, passphrase_len, salt,
                       HORSE_ARGON2ID_OPSLIMIT, HORSE_ARGON2ID_MEMLIMIT,
                       crypto_pwhash_ALG_ARGON2ID13)
         != 0) {
+        horse_heap_release(HORSE_ARGON2ID_MEMLIMIT);
         return false;
     }
+    horse_heap_release(HORSE_ARGON2ID_MEMLIMIT);
     return true;
 #else
     (void)passphrase_len;

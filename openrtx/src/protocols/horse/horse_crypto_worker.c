@@ -5,6 +5,7 @@
  */
 
 #include "protocols/horse/horse_crypto_worker.h"
+#include "protocols/horse/horse_heap.h"
 #include "core/threads.h"
 #include <pthread.h>
 #include <stdlib.h>
@@ -183,12 +184,14 @@ void horse_crypto_worker_init(void)
     pthread_mutex_unlock(&mu);
     pthread_attr_init(&attr);
     pthread_attr_setstacksize(&attr, CODEC2_THREAD_STKSIZE);
+    horse_heap_acquire(CODEC2_THREAD_STKSIZE);
 #if !defined(_MIOSIX) && !defined(__ZEPHYR__)
     stk = malloc(CODEC2_THREAD_STKSIZE);
     if (stk)
         pthread_attr_setstack(&attr, stk, CODEC2_THREAD_STKSIZE);
 #endif
     if (pthread_create(&thr, &attr, worker_main, NULL) != 0) {
+        horse_heap_release(CODEC2_THREAD_STKSIZE);
         pthread_mutex_lock(&mu);
         live = 0;
         pthread_mutex_unlock(&mu);
@@ -209,6 +212,7 @@ void horse_crypto_worker_terminate(void)
     pthread_join(thr, NULL);
     pthread_attr_destroy(&attr);
     wipe_secrets();
+    horse_heap_release(CODEC2_THREAD_STKSIZE);
 #if !defined(_MIOSIX) && !defined(__ZEPHYR__)
     free(stk);
     stk = NULL;
