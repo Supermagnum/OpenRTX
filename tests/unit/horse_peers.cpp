@@ -73,8 +73,8 @@ int main()
     snprintf(peersbin, sizeof peersbin, "%s/OpenRTX/horse_peers.bin", xdg);
     unlink(peersbin);
 
-    horse_peer_t peer;
-    horse_peer_t round;
+    struct horse_peer peer;
+    struct horse_peer round;
     memset(&peer, 0, sizeof peer);
     peer.address[0] = 0x11;
     memset(peer.x25519_pk, 0x22, sizeof peer.x25519_pk);

@@ -98,10 +98,10 @@ private:
     uint8_t txSessionMsg[HORSE_SESSION_MSG_BYTES];
     uint8_t txZeroTag[HORSE_VOICE_TAG_BYTES];
     uint16_t rxSoft[horse::FRAME_BITS];
-    horse_peer_t txPeer;
-    horse_identity_keys_t txId;
-    horse_identity_keys_t rxId;
-    horse_peer_t rxPeer;
+    struct horse_peer txPeer;
+    struct horse_identity_keys txId;
+    struct horse_identity_keys rxId;
+    struct horse_peer rxPeer;
     uint8_t rxSessionMsg[HORSE_SESSION_MSG_BYTES];
     uint8_t rxNonce[12];
     uint8_t rxPlain[HORSE_CODEC_FRAME_BYTES];

@@ -261,7 +261,7 @@ static int test_handoff_and_cancel(void)
     if (!horse_crypto_req_argon2("ptt-cancel", 10, salt, sizeof salt))
         return -1;
     horse_crypto_cancel();
-    horse_crypto_st st = horse_crypto_wait();
+    enum horse_crypto_st st = horse_crypto_wait();
     if (st != HORSE_CRYPTO_ST_CANCELLED && st != HORSE_CRYPTO_ST_DONE) {
         std::printf("horse_crypto_worker_test: cancel st=%d\n", (int)st);
         horse_crypto_worker_terminate();

@@ -112,7 +112,7 @@ Channel `encrypt_en` / `sign_en` must match the LSF flags. Both clear
 still means encrypt. If the channel requires signing and the LSF does
 not claim it, or the reverse, there is no audio. Same for encryption.
 
-Identities: `horse_identity_keys_t` (Ed25519 32/64, X25519 32/32), wrapped
+Identities: `struct horse_identity_keys` (Ed25519 32/64, X25519 32/32), wrapped
 with Argon2id (`opslimit=2`, `memlimit=16384`) plus XChaCha20-Poly1305.
 The passphrase must be 8 to 32 bytes inclusive (`HORSE_PASSPHRASE_MIN` /
 `HORSE_PASSPHRASE_MAX`). Empty and shorter strings are rejected in
@@ -120,7 +120,7 @@ The passphrase must be 8 to 32 bytes inclusive (`HORSE_PASSPHRASE_MIN` /
 chosen keypad-feasible floor, not a high-entropy policy.
 Passphrase is RAM-only. Linux files are
 `$XDG_STATE_HOME/OpenRTX/horse_identity.bin` mode 0600. Peer public keys
-are a sidecar table (`horse_peer_t`, 64 slots), not `contact_t`.
+are a sidecar table (`struct horse_peer`, 64 slots), not `contact_t`.
 `horse_provision.py` writes both formats. Store version 2 is
 Argon2id+XChaCha20; store version 3 is the same packed identity
 encrypted to an OpenPGP recipient (decrypt via gpg/sq agent, pipes

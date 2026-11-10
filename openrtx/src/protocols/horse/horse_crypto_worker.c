@@ -33,7 +33,7 @@ static void *stk;
 
 static struct {
     int op;
-    horse_crypto_st st;
+    enum horse_crypto_st st;
     int cancel;
     int ok;
     uint8_t sk[32];
@@ -235,18 +235,18 @@ void horse_crypto_cancel(void)
     pthread_mutex_unlock(&mu);
 }
 
-horse_crypto_st horse_crypto_poll(void)
+enum horse_crypto_st horse_crypto_poll(void)
 {
-    horse_crypto_st st;
+    enum horse_crypto_st st;
     pthread_mutex_lock(&mu);
     st = job.st;
     pthread_mutex_unlock(&mu);
     return st;
 }
 
-horse_crypto_st horse_crypto_wait(void)
+enum horse_crypto_st horse_crypto_wait(void)
 {
-    horse_crypto_st st;
+    enum horse_crypto_st st;
     pthread_mutex_lock(&mu);
     while (job.st == HORSE_CRYPTO_ST_PENDING)
         pthread_cond_wait(&cv, &mu);

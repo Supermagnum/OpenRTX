@@ -133,7 +133,7 @@ int main()
         return -1;
     }
 
-    horse_identity_keys_t id;
+    struct horse_identity_keys id;
     memset(&id, 0, sizeof id);
     uint8_t ed_pk[32], x_pk[32];
     if (parse_hex(ed_hex, ed_pk, 32) != 0 || parse_hex(x_hex, x_pk, 32) != 0)
@@ -161,7 +161,7 @@ int main()
         return -1;
     }
 
-    horse_peer_t peer;
+    struct horse_peer peer;
     memset(&peer, 0, sizeof peer);
     uint8_t addr[6] = { 1, 2, 3, 4, 5, 6 };
     if (!horse_peer_read(3, &peer) || memcmp(peer.address, addr, 6) != 0

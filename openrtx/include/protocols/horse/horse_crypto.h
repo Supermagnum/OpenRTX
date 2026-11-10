@@ -62,7 +62,7 @@ static inline bool horse_passphrase_ok(const char *passphrase, size_t len)
 #define HORSE_ED25519_SIGNATURE_BYTES 64
 
 /* Identity key bundle stored/provisioned to the radio. */
-typedef struct {
+struct horse_identity_keys {
     uint8_t version; /* must be 1 */
     uint8_t reserved[3];
 
@@ -71,7 +71,7 @@ typedef struct {
 
     uint8_t x25519_pk[HORSE_X25519_PUBLICKEY_BYTES];
     uint8_t x25519_sk[HORSE_X25519_SECRETKEY_BYTES];
-} __attribute__((packed)) horse_identity_keys_t;
+} __attribute__((packed));
 
 /* Voice frame encrypt: XChaCha20 with k_enc. Tag is keyed BLAKE2b with
  * k_tag over dir || FN16 (no last-frame bit) || payload (ciphertext). */
@@ -121,17 +121,17 @@ bool horse_crypto_lsf_version_ok(uint8_t version);
 void horse_crypto_voice_nonce_from_fn(uint16_t frame_num,
                                       uint8_t nonce_96bit[12]);
 
-/* Encrypt/decrypt a horse_identity_keys_t blob with a derived wrap key. */
-bool horse_crypto_encrypt_identity(const horse_identity_keys_t *identity,
+/* Encrypt/decrypt a struct horse_identity_keys blob with a derived wrap key. */
+bool horse_crypto_encrypt_identity(const struct horse_identity_keys *identity,
                                    const uint8_t *wrap_key, size_t wrap_key_len,
                                    uint8_t *blob_out, size_t blob_cap,
                                    size_t *blob_len);
 
 bool horse_crypto_decrypt_identity(const uint8_t *blob, size_t blob_len,
                                    const uint8_t *wrap_key, size_t wrap_key_len,
-                                   horse_identity_keys_t *identity_out);
+                                   struct horse_identity_keys *identity_out);
 
-bool horse_crypto_identity_fingerprint(const horse_identity_keys_t *identity,
+bool horse_crypto_identity_fingerprint(const struct horse_identity_keys *identity,
                                        uint8_t fp_out[32]);
 
 /* Build src||dst||eph_pk||flags||version (HORSE_SESSION_MSG_BYTES). */
@@ -152,7 +152,7 @@ bool horse_crypto_voice_auth_verify(const uint8_t k_tag[32], uint8_t dir,
 
 /* Sign data with Ed25519 (without encryption).
  * Input:
- *  - ed25519_secretkey[64]: signing key from horse_identity_keys_t
+ *  - ed25519_secretkey[64]: signing key from struct horse_identity_keys
  *  - message: data to sign
  *  - message_len: length of message
  * Output:
@@ -164,7 +164,7 @@ bool horse_crypto_sign(const uint8_t *ed25519_secretkey, const uint8_t *message,
 
 /* Verify Ed25519 signature (without decryption).
  * Input:
- *  - ed25519_publickey[32]: verification key from horse_identity_keys_t
+ *  - ed25519_publickey[32]: verification key from struct horse_identity_keys
  *  - message: signed data
  *  - message_len: length of message
  *  - signature[64]: Ed25519 signature to verify

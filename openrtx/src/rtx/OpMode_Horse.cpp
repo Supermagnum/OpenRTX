@@ -46,7 +46,7 @@ static bool horse_is_sig_frame(uint16_t fn)
 static bool horse_wait_job(bool check_ptt)
 {
     for (;;) {
-        horse_crypto_st st = horse_crypto_poll();
+        enum horse_crypto_st st = horse_crypto_poll();
         if (st == HORSE_CRYPTO_ST_PENDING) {
             if (check_ptt && !platform_getPttStatus()) {
                 horse_crypto_cancel();
@@ -144,7 +144,7 @@ void OpMode_Horse::tryFinalizeRxSessionSig()
     if (rxSigChunks < SIG_FRAME_COUNT)
         return;
 
-    horse_peer_t &peer = rxPeer;
+    struct horse_peer &peer = rxPeer;
     memset(&peer, 0, sizeof peer);
     if (state.channel.horse.contact_index == 0
         || !horse_peer_read(state.channel.horse.contact_index, &peer)
@@ -221,7 +221,7 @@ bool OpMode_Horse::applyLsfIfReady(rtxStatus_t *const status)
     demodulator.noteValidTag();
 
     if (horse_keystore_is_unlocked()) {
-        horse_identity_keys_t &id = rxId;
+        struct horse_identity_keys &id = rxId;
         if (horse_keystore_copy_identity(&id)
             && horse_crypto_req_derive(id.x25519_sk, rxLsfEphPk,
                                        rxLsfSrc.data(), rxLsfDst.data(),

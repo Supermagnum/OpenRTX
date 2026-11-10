@@ -20,20 +20,20 @@
 extern "C" {
 #endif
 
-typedef enum {
+enum horse_crypto_st {
     HORSE_CRYPTO_ST_IDLE = 0,
     HORSE_CRYPTO_ST_PENDING,
     HORSE_CRYPTO_ST_DONE,
     HORSE_CRYPTO_ST_FAILED,
-    HORSE_CRYPTO_ST_CANCELLED
-} horse_crypto_st;
+    HORSE_CRYPTO_ST_CANCELLED,
+};
 
 void horse_crypto_worker_init(void);
 void horse_crypto_worker_terminate(void);
 
 void horse_crypto_cancel(void);
-horse_crypto_st horse_crypto_poll(void);
-horse_crypto_st horse_crypto_wait(void);
+enum horse_crypto_st horse_crypto_poll(void);
+enum horse_crypto_st horse_crypto_wait(void);
 
 bool horse_crypto_req_x25519_keypair(void);
 bool horse_crypto_take_keypair(uint8_t pk[32], uint8_t sk[32]);

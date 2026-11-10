@@ -21,16 +21,16 @@ extern "C" {
 
 #define HORSE_PEER_MAX 64
 
-typedef struct {
+struct horse_peer {
     uint8_t address[6];
     uint8_t x25519_pk[HORSE_X25519_PUBLICKEY_BYTES];
     uint8_t ed25519_pk[HORSE_ED25519_PUBLICKEY_BYTES];
-} __attribute__((packed)) horse_peer_t;
+} __attribute__((packed));
 
-bool horse_peer_read(uint16_t index, horse_peer_t *out);
-bool horse_peer_write(uint16_t index, const horse_peer_t *in);
-bool horse_peer_has_x25519(const horse_peer_t *peer);
-bool horse_peer_has_ed25519(const horse_peer_t *peer);
+bool horse_peer_read(uint16_t index, struct horse_peer *out);
+bool horse_peer_write(uint16_t index, const struct horse_peer *in);
+bool horse_peer_has_x25519(const struct horse_peer *peer);
+bool horse_peer_has_ed25519(const struct horse_peer *peer);
 
 #ifdef __cplusplus
 }

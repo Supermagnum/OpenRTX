@@ -287,7 +287,7 @@ void horse_crypto_voice_nonce_from_fn(uint16_t frame_num,
     nonce_96bit[11] = (uint8_t)(frame_num & 0xFF);
 }
 
-bool horse_crypto_encrypt_identity(const horse_identity_keys_t *identity,
+bool horse_crypto_encrypt_identity(const struct horse_identity_keys *identity,
                                    const uint8_t *wrap_key, size_t wrap_key_len,
                                    uint8_t *blob_out, size_t blob_cap,
                                    size_t *blob_len)
@@ -299,7 +299,7 @@ bool horse_crypto_encrypt_identity(const horse_identity_keys_t *identity,
 #ifdef HAVE_LIBSODIUM
     const size_t need = crypto_aead_xchacha20poly1305_ietf_NPUBBYTES
                       + crypto_aead_xchacha20poly1305_ietf_ABYTES
-                      + sizeof(horse_identity_keys_t);
+                      + sizeof(struct horse_identity_keys);
 
     if (blob_cap < need)
         return false;
@@ -315,7 +315,7 @@ bool horse_crypto_encrypt_identity(const horse_identity_keys_t *identity,
     unsigned long long clen = 0;
     if (crypto_aead_xchacha20poly1305_ietf_encrypt(
             blob_out + sizeof nonce, &clen, (const unsigned char *)identity,
-            sizeof(horse_identity_keys_t), NULL, 0, NULL, nonce, wrap_key)
+            sizeof(struct horse_identity_keys), NULL, 0, NULL, nonce, wrap_key)
         != 0)
         return false;
 
@@ -332,7 +332,7 @@ bool horse_crypto_encrypt_identity(const horse_identity_keys_t *identity,
 
 bool horse_crypto_decrypt_identity(const uint8_t *blob, size_t blob_len,
                                    const uint8_t *wrap_key, size_t wrap_key_len,
-                                   horse_identity_keys_t *identity_out)
+                                   struct horse_identity_keys *identity_out)
 {
     if (blob == NULL || wrap_key == NULL || identity_out == NULL)
         return false;
@@ -359,7 +359,7 @@ bool horse_crypto_decrypt_identity(const uint8_t *blob, size_t blob_len,
         != 0)
         return false;
 
-    return mlen == sizeof(horse_identity_keys_t);
+    return mlen == sizeof(struct horse_identity_keys);
 #else
     (void)blob_len;
     (void)wrap_key_len;
@@ -368,7 +368,7 @@ bool horse_crypto_decrypt_identity(const uint8_t *blob, size_t blob_len,
 #endif
 }
 
-bool horse_crypto_identity_fingerprint(const horse_identity_keys_t *identity,
+bool horse_crypto_identity_fingerprint(const struct horse_identity_keys *identity,
                                        uint8_t fp_out[32])
 {
     uint8_t pub[HORSE_ED25519_PUBLICKEY_BYTES + HORSE_X25519_PUBLICKEY_BYTES];

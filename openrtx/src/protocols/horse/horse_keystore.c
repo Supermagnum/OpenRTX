@@ -40,7 +40,7 @@
 #define HORSE_IDENTITY_NVM_OFFSET 0x00FE0000U
 #endif
 
-typedef struct {
+struct horse_identity_store {
     uint32_t magic;
     uint8_t store_version;
     uint8_t kdf_version;
@@ -50,33 +50,36 @@ typedef struct {
     uint8_t salt[HORSE_KDF_SALT_BYTES];
     uint16_t blob_len;
     uint8_t blob[256];
-} __attribute__((packed)) horse_identity_store_t;
+} __attribute__((packed));
 
 /* Match scripts/horse_provision.py pack format (34 B header + 256 B blob). */
-_Static_assert(sizeof(horse_identity_store_t) == 290,
-               "horse_identity_store_t size");
-_Static_assert(offsetof(horse_identity_store_t, magic) == 0, "store.magic");
-_Static_assert(offsetof(horse_identity_store_t, store_version) == 4,
+_Static_assert(sizeof(struct horse_identity_store) == 290,
+               "horse_identity_store size");
+_Static_assert(offsetof(struct horse_identity_store, magic) == 0,
+               "store.magic");
+_Static_assert(offsetof(struct horse_identity_store, store_version) == 4,
                "store.store_version");
-_Static_assert(offsetof(horse_identity_store_t, kdf_version) == 5,
+_Static_assert(offsetof(struct horse_identity_store, kdf_version) == 5,
                "store.kdf_version");
-_Static_assert(offsetof(horse_identity_store_t, opslimit) == 8,
+_Static_assert(offsetof(struct horse_identity_store, opslimit) == 8,
                "store.opslimit");
-_Static_assert(offsetof(horse_identity_store_t, memlimit) == 12,
+_Static_assert(offsetof(struct horse_identity_store, memlimit) == 12,
                "store.memlimit");
-_Static_assert(offsetof(horse_identity_store_t, salt) == 16, "store.salt");
-_Static_assert(offsetof(horse_identity_store_t, blob_len) == 32,
+_Static_assert(offsetof(struct horse_identity_store, salt) == 16,
+               "store.salt");
+_Static_assert(offsetof(struct horse_identity_store, blob_len) == 32,
                "store.blob_len");
-_Static_assert(offsetof(horse_identity_store_t, blob) == 34, "store.blob");
+_Static_assert(offsetof(struct horse_identity_store, blob) == 34,
+               "store.blob");
 
-static horse_identity_keys_t unlocked_identity;
+static struct horse_identity_keys unlocked_identity;
 static bool identity_unlocked;
 static char held_passphrase[HORSE_PASSPHRASE_MAX + 1];
 static size_t held_passphrase_len;
 static bool have_passphrase;
 static pthread_mutex_t identity_mu = PTHREAD_MUTEX_INITIALIZER;
 
-static void horse_identity_wipe(horse_identity_keys_t *id)
+static void horse_identity_wipe(struct horse_identity_keys *id)
 {
     horse_crypto_memzero(id, sizeof *id);
 }
@@ -125,7 +128,7 @@ static int horse_linux_identity_dir(char *dir, size_t dir_len)
     return 0;
 }
 
-static int horse_store_read(horse_identity_store_t *store)
+static int horse_store_read(struct horse_identity_store *store)
 {
 #ifdef PLATFORM_LINUX
     char path[512];
@@ -147,7 +150,7 @@ static int horse_store_read(horse_identity_store_t *store)
 #endif
 }
 
-static int horse_store_write(const horse_identity_store_t *store)
+static int horse_store_write(const struct horse_identity_store *store)
 {
 #ifdef PLATFORM_LINUX
     char dir[512];
@@ -207,7 +210,7 @@ bool horse_keystore_is_unlocked(void)
     return unlocked;
 }
 
-bool horse_keystore_copy_identity(horse_identity_keys_t *out)
+bool horse_keystore_copy_identity(struct horse_identity_keys *out)
 {
     bool ok = false;
 
@@ -281,7 +284,7 @@ bool horse_keystore_unlock_held(void)
 
 bool horse_keystore_unlock(const char *passphrase, size_t passphrase_len)
 {
-    horse_identity_store_t store;
+    struct horse_identity_store store;
     uint8_t wrap_key[HORSE_SESSION_KEY_BYTES];
 
     if (!horse_crypto_available() || passphrase == NULL
@@ -305,7 +308,7 @@ bool horse_keystore_unlock(const char *passphrase, size_t passphrase_len)
                                wrap_key))
         return false;
 
-    horse_identity_keys_t identity;
+    struct horse_identity_keys identity;
     if (!horse_crypto_decrypt_identity(store.blob, store.blob_len, wrap_key,
                                        HORSE_SESSION_KEY_BYTES, &identity)) {
         horse_crypto_memzero(wrap_key, sizeof wrap_key);
@@ -322,11 +325,11 @@ bool horse_keystore_unlock(const char *passphrase, size_t passphrase_len)
     return true;
 }
 
-bool horse_keystore_store_plaintext(const horse_identity_keys_t *identity,
+bool horse_keystore_store_plaintext(const struct horse_identity_keys *identity,
                                     const char *passphrase,
                                     size_t passphrase_len)
 {
-    horse_identity_store_t store;
+    struct horse_identity_store store;
     uint8_t wrap_key[HORSE_SESSION_KEY_BYTES];
     size_t blob_len = 0;
 
@@ -373,7 +376,7 @@ bool horse_keystore_store_plaintext(const horse_identity_keys_t *identity,
     return true;
 }
 
-bool horse_keystore_store_with_held(const horse_identity_keys_t *identity)
+bool horse_keystore_store_with_held(const struct horse_identity_keys *identity)
 {
     char pass[HORSE_PASSPHRASE_MAX + 1];
     size_t n;
@@ -396,7 +399,7 @@ bool horse_keystore_store_with_held(const horse_identity_keys_t *identity)
 
 bool horse_keystore_fingerprint(uint8_t fp_out[32])
 {
-    horse_identity_keys_t id;
+    struct horse_identity_keys id;
     bool ok;
 
     if (fp_out == NULL)

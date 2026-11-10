@@ -56,7 +56,7 @@ static int horse_peers_path(char *path, size_t path_len)
 static int horse_peers_ensure_file(const char *path)
 {
     int fd;
-    horse_peer_t zero;
+    struct horse_peer zero;
     uint16_t i;
 
     fd = open(path, O_RDWR);
@@ -80,7 +80,7 @@ static int horse_peers_ensure_file(const char *path)
 }
 #endif
 
-bool horse_peer_read(uint16_t index, horse_peer_t *out)
+bool horse_peer_read(uint16_t index, struct horse_peer *out)
 {
     if (out == NULL || index == 0 || index > HORSE_PEER_MAX)
         return false;
@@ -97,7 +97,7 @@ bool horse_peer_read(uint16_t index, horse_peer_t *out)
     fd = open(path, O_RDONLY);
     if (fd < 0)
         return false;
-    off = (off_t)(index - 1) * (off_t)sizeof(horse_peer_t);
+    off = (off_t)(index - 1) * (off_t)sizeof(struct horse_peer);
     if (lseek(fd, off, SEEK_SET) != off
         || read(fd, out, sizeof *out) != (ssize_t)sizeof *out) {
         close(fd);
@@ -108,13 +108,13 @@ bool horse_peer_read(uint16_t index, horse_peer_t *out)
 #else
     return nvm_read(0, 0,
                     HORSE_PEERS_NVM_OFFSET
-                        + (uint32_t)(index - 1) * sizeof(horse_peer_t),
+                        + (uint32_t)(index - 1) * sizeof(struct horse_peer),
                     out, sizeof *out)
         == 0;
 #endif
 }
 
-bool horse_peer_write(uint16_t index, const horse_peer_t *in)
+bool horse_peer_write(uint16_t index, const struct horse_peer *in)
 {
     if (in == NULL || index == 0 || index > HORSE_PEER_MAX)
         return false;
@@ -144,7 +144,7 @@ bool horse_peer_write(uint16_t index, const horse_peer_t *in)
     fd = open(path, O_RDWR);
     if (fd < 0)
         return false;
-    off = (off_t)(index - 1) * (off_t)sizeof(horse_peer_t);
+    off = (off_t)(index - 1) * (off_t)sizeof(struct horse_peer);
     if (lseek(fd, off, SEEK_SET) != off
         || write(fd, in, sizeof *in) != (ssize_t)sizeof *in) {
         close(fd);
@@ -155,20 +155,20 @@ bool horse_peer_write(uint16_t index, const horse_peer_t *in)
 #else
     return nvm_write(0, 0,
                      HORSE_PEERS_NVM_OFFSET
-                         + (uint32_t)(index - 1) * sizeof(horse_peer_t),
+                         + (uint32_t)(index - 1) * sizeof(struct horse_peer),
                      in, sizeof *in)
         == 0;
 #endif
 }
 
-bool horse_peer_has_x25519(const horse_peer_t *peer)
+bool horse_peer_has_x25519(const struct horse_peer *peer)
 {
     if (peer == NULL)
         return false;
     return peer_nonzero(peer->x25519_pk, sizeof peer->x25519_pk);
 }
 
-bool horse_peer_has_ed25519(const horse_peer_t *peer)
+bool horse_peer_has_ed25519(const struct horse_peer *peer)
 {
     if (peer == NULL)
         return false;

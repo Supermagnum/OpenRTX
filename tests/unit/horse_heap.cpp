@@ -43,7 +43,7 @@ int main(void)
     std::printf("horse_heap: skipped runtime (no libsodium)\n");
     return 77;
 #else
-    horse_identity_keys_t id;
+    struct horse_identity_keys id;
     const char *pass = "heap-test-passphrase";
     uint8_t salt[HORSE_KDF_SALT_BYTES];
     uint8_t key[32];

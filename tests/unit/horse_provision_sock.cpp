@@ -104,7 +104,7 @@ static int send_hello(int fd)
     return 0;
 }
 
-static int send_identity(int fd, const horse_identity_keys_t *id)
+static int send_identity(int fd, const struct horse_identity_keys *id)
 {
     uint8_t hdr[4];
 
@@ -119,7 +119,7 @@ static int send_identity(int fd, const horse_identity_keys_t *id)
 }
 
 static int test_refuse_outside_mode(const char *sock,
-                                    const horse_identity_keys_t *id)
+                                    const struct horse_identity_keys *id)
 {
     uint8_t conf_hdr[4];
     int fd = connect_sock(sock);
@@ -147,7 +147,7 @@ static int test_refuse_outside_mode(const char *sock,
     return 0;
 }
 
-static int test_happy(const char *sock, const horse_identity_keys_t *id,
+static int test_happy(const char *sock, const struct horse_identity_keys *id,
                       const uint8_t expect_fp[32])
 {
     uint8_t conf_hdr[4];
@@ -217,7 +217,7 @@ static int test_happy(const char *sock, const horse_identity_keys_t *id,
 }
 
 static int test_timeout_refuses(const char *sock,
-                                const horse_identity_keys_t *id)
+                                const struct horse_identity_keys *id)
 {
     uint8_t conf_hdr[4];
     int fd;
@@ -397,7 +397,7 @@ int main()
     char tmpl[] = "/tmp/horse_prov_rtXXXXXX";
     char *runtime = mkdtemp(tmpl);
     char sock[160];
-    horse_identity_keys_t id;
+    struct horse_identity_keys id;
     uint8_t fp[32];
     const char *pass = "sock-test-pass";
 

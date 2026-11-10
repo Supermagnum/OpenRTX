@@ -23,7 +23,7 @@ static volatile int torn;
 
 static void *copier(void *)
 {
-    horse_identity_keys_t id;
+    struct horse_identity_keys id;
     while (!stop_flag) {
         if (horse_keystore_copy_identity(&id)) {
             if (id.version != 1)
@@ -41,7 +41,7 @@ static void *locker(void *)
     while (!stop_flag) {
         horse_keystore_lock();
         usleep(10);
-        horse_identity_keys_t id;
+        struct horse_identity_keys id;
         if (horse_keystore_copy_identity(&id)) {
             if (id.version != 1)
                 torn = 1;
@@ -63,7 +63,7 @@ int main()
     if (sodium_init() < 0)
         return -1;
 
-    horse_identity_keys_t id;
+    struct horse_identity_keys id;
     memset(&id, 0, sizeof id);
     id.version = 1;
     crypto_sign_ed25519_keypair(id.ed25519_pk, id.ed25519_sk);
@@ -127,7 +127,7 @@ int main()
         std::printf("horse_keystore_test: hold passphrase failed\n");
         return -1;
     }
-    horse_identity_keys_t out;
+    struct horse_identity_keys out;
     memset(&out, 0, sizeof out);
     horse_keystore_lock();
     if (horse_keystore_has_passphrase() || horse_keystore_unlock_held()

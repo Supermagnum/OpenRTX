@@ -213,7 +213,7 @@ succeeds and `OpMode_Horse.cpp` is part of the emulator binary.
 
 ### C9. `contact_t` / `settings_t` layout change -- fixed
 
-- **Fix:** Horse peers are a sidecar (`horse_peer_t`); `contact_t` remains
+- **Fix:** Horse peers are a sidecar (`struct horse_peer`); `contact_t` remains
   39 B. Passphrase is RAM-only; `settings_t` remains 84 B and matches
   upstream (`tests/unit/horse_settings_upstream.py`). `horseInfo_t`
   (4 B) fits the existing channel union. `cps_layout_test` asserts
@@ -225,7 +225,7 @@ succeeds and `OpMode_Horse.cpp` is part of the emulator binary.
 ### C10. Provisioning packs a 32-byte Ed25519 seed into a 64-byte field -- critical (sign path)
 
 - **Where:** `scripts/horse_provision.py:91-92, 116-124`; firmware
-  `horse_identity_keys_t.ed25519_sk[64]`; `crypto_sign_detached`
+  `struct horse_identity_keys.ed25519_sk[64]`; `crypto_sign_detached`
   (`horse_crypto.c`).
 - **What is wrong:** PyNaCl `bytes(signing_key)` is the 32-byte seed.
   `struct.pack("...64s...")` null-pads to 64. Libsodium's 64-byte sk is

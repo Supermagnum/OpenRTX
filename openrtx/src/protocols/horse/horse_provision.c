@@ -47,7 +47,7 @@ static size_t rx_len;
 static bool mode_active;
 static long long mode_deadline_ms;
 static bool have_pending;
-static horse_identity_keys_t pending_identity;
+static struct horse_identity_keys pending_identity;
 static uint8_t pending_fp[32];
 
 #ifdef PLATFORM_LINUX
@@ -344,19 +344,19 @@ int horse_provision_reject(void)
 
 static void prov_handle_identity(const uint8_t *payload, uint16_t len)
 {
-    const horse_identity_keys_t *identity;
+    const struct horse_identity_keys *identity;
 
     if (!horse_provision_mode_active()) {
         prov_send(HORSE_MSG_ERROR, "not provisioning", 16);
         return;
     }
 
-    if (len < sizeof(horse_identity_keys_t)) {
+    if (len < sizeof(struct horse_identity_keys)) {
         prov_send(HORSE_MSG_ERROR, "bad identity size", 17);
         return;
     }
 
-    identity = (const horse_identity_keys_t *)payload;
+    identity = (const struct horse_identity_keys *)payload;
 
     if (identity->version != 1) {
         prov_send(HORSE_MSG_ERROR, "bad identity version", 20);
