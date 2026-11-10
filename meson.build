@@ -1378,6 +1378,12 @@ cps_test = executable('cps_test',
                       sources : unit_test_src + ['tests/unit/cps.cpp'],
                       kwargs  : unit_test_opts)
 
+cps_layout_test = executable('cps_layout_test',
+                             sources : ['tests/unit/cps_layout.c'],
+                             include_directories : openrtx_inc,
+                             c_args : linux_c_args,
+                             link_args : linux_l_args)
+
 linux_inputStream_test = executable('linux_inputStream_test',
                                     sources : unit_test_src + ['tests/unit/linux_inputStream_test.cpp'],
                                     kwargs  : unit_test_opts)
@@ -1434,6 +1440,7 @@ test('M17 RRC Test',          m17_rrc_test)
 test('M17 Callsign Unit Test',          m17_callsign_test)
 test('M17 Meta Text Unit Test',         m17_metatext_test)
 test('Codeplug Test',         cps_test)
+test('CPS layout vs upstream', cps_layout_test)
 test('Horse Frame Unit Test', horse_frame_test)
 test('Horse Codec Unit Test', horse_codec_test)
 test('Horse Crypto Unit Test', horse_crypto_test)
