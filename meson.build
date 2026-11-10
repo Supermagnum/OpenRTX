@@ -1381,6 +1381,36 @@ horse_codec_test = executable('horse_codec_test',
 
 
 
+
+horse_host_interop_test = executable('horse_host_interop_test',
+                                     sources : ['openrtx/src/protocols/horse/horse_keystore.c',
+                                                'openrtx/src/protocols/horse/horse_crypto.c',
+                                                'openrtx/src/protocols/horse/horse_heap.c',
+                                                'openrtx/src/protocols/horse/horse_randombytes.c',
+                                                'openrtx/src/protocols/horse/horse_peers.c',
+                                                'tests/unit/horse_host_interop.cpp'],
+                                     include_directories : openrtx_inc,
+                                     dependencies : linux_deps + [threads_dep],
+                                     c_args : linux_c_args + ['-DPLATFORM_LINUX'],
+                                     cpp_args : linux_cpp_args + [
+                                       '-DPLATFORM_LINUX',
+                                       '-DHORSE_PROVISION_PY="' + meson.project_source_root() / 'scripts/horse_provision.py' + '"'
+                                     ],
+                                     link_args : linux_l_args)
+
+horse_provision_sock_test = executable('horse_provision_sock_test',
+                                       sources : ['openrtx/src/protocols/horse/horse_provision.c',
+                                                  'openrtx/src/protocols/horse/horse_keystore.c',
+                                                  'openrtx/src/protocols/horse/horse_crypto.c',
+                                                  'openrtx/src/protocols/horse/horse_heap.c',
+                                                  'openrtx/src/protocols/horse/horse_randombytes.c',
+                                                  'tests/unit/horse_provision_sock.cpp'],
+                                       include_directories : openrtx_inc,
+                                       dependencies : linux_deps + [threads_dep],
+                                       c_args : linux_c_args + ['-DPLATFORM_LINUX'],
+                                       cpp_args : linux_cpp_args + ['-DPLATFORM_LINUX'],
+                                       link_args : linux_l_args)
+
 horse_info_test = executable('horse_info_test',
                              sources : ['tests/unit/horse_info.cpp'],
                              include_directories : openrtx_inc,
@@ -1462,6 +1492,12 @@ horse_randombytes_test = executable('horse_randombytes_test',
                                     link_args : linux_l_args,
                                     override_options : ['b_coverage=false'])
 
+
+py3 = find_program('python3', required : true)
+horse_test_env = environment()
+horse_test_env.set('ASAN_OPTIONS', 'detect_leaks=0')
+horse_test_env.set('HORSE_REQUIRE_CRYPTO', '1')
+
 test('M17 Golay Unit Test',   m17_golay_test)
 test('Horse Crypto Unit Test', horse_crypto_test)
 test('Horse Crypto Worker Unit Test', horse_crypto_worker_test)
@@ -1472,6 +1508,25 @@ test('Horse Randombytes Unit Test', horse_randombytes_test)
 test('Horse Loopback Unit Test', horse_loopback_test)
 test('Horse Info Reset Test', horse_info_test)
 test('Horse TX Crypto Fail Test', horse_tx_fail_test)
+
+test('Horse Host Interop Test', horse_host_interop_test,
+     env : horse_test_env, timeout : 180)
+test('Horse Provision Socket Test', horse_provision_sock_test,
+     env : horse_test_env, timeout : 60)
+test('Horse Provision Pack Test', py3,
+     args : [meson.project_source_root() / 'scripts/horse_provision.py', 'selftest'],
+     env : horse_test_env,
+     timeout : 30)
+test('Horse Provision pytest', py3,
+     args : [meson.project_source_root() / 'tests/python/run_pytest.py',
+             '-q', meson.project_source_root() / 'tests/python/test_horse_provision.py'],
+     env : horse_test_env,
+     workdir : meson.project_source_root(),
+     timeout : 300)
+test('Horse settings.h matches upstream', py3,
+     args : [meson.project_source_root() / 'tests/unit/horse_settings_upstream.py'],
+     workdir : meson.project_source_root(),
+     timeout : 30)
 test('Horse Codec Unit Test', horse_codec_test)
 test('Horse Frame Unit Test', horse_frame_test)
 test('M17 Viterbi Unit Test', m17_viterbi_test)
