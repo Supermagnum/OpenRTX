@@ -1490,6 +1490,11 @@ py3 = find_program('python3', required : true)
 horse_test_env = environment()
 horse_test_env.set('ASAN_OPTIONS', 'detect_leaks=0')
 horse_test_env.set('HORSE_REQUIRE_CRYPTO', '1')
+hopg_helper = run_command('sh', '-c', 'printf %s "${HORSE_OPENPGP_HELPER-}"',
+                          check : false).stdout().strip()
+if hopg_helper != ''
+  horse_test_env.set('HORSE_OPENPGP_HELPER', hopg_helper)
+endif
 
 test('M17 Golay Unit Test',   m17_golay_test)
 test('M17 Viterbi Unit Test', m17_viterbi_test)
@@ -1525,6 +1530,19 @@ test('Horse settings.h matches upstream', py3,
      args : [meson.project_source_root() / 'tests/unit/horse_settings_upstream.py'],
      workdir : meson.project_source_root(),
      timeout : 30)
+
+_hopg_encdec = join_paths(meson.project_source_root(),
+                          'tests/python/test_horse_openpgp.py')
+test('Horse OpenPGP encrypt/decrypt', py3,
+     args : [meson.project_source_root() / 'tests/python/run_pytest.py',
+             '-q',
+             _hopg_encdec + '::test_openpgp_encrypt_decrypt_roundtrip',
+             _hopg_encdec + '::test_openpgp_decrypt_rejects_garbage',
+             _hopg_encdec + '::test_openpgp_wrap_cli_encrypt_decrypt',
+             _hopg_encdec + '::test_store_version3_roundtrip'],
+     env : horse_test_env,
+     workdir : meson.project_source_root(),
+     timeout : 120)
 test('Horse Info Reset Test', horse_info_test)
 test('Horse TX Crypto Fail Test', horse_tx_fail_test)
 ## test('Linux InputStream Test', linux_inputStream_test)
