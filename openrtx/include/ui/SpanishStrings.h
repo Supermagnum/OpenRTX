@@ -95,5 +95,6 @@ const stringsTable_t spanishStrings =
     .CAN               = "CAN",
     .canRxCheck        = "CAN RX Check",
     .metaText          = "Meta Txt",
+    .horseProvision    = "Prov Horse",
 };
 #endif  // SPANISHSTRINGS_H

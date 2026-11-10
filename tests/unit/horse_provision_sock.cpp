@@ -3,8 +3,9 @@
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  *
- * Host test for Linux Horse provisioning Unix socket: happy path,
- * SIGPIPE-safe disconnect, oversized length, partial header, path/mode.
+ * Host test for Linux Horse provisioning Unix socket: happy path with
+ * menu-mode confirm, refuse outside mode / after timeout, SIGPIPE-safe
+ * disconnect, oversized length, partial header, path/mode.
  */
 
 #include "protocols/horse/horse_provision.h"
@@ -30,6 +31,7 @@
 #define HORSE_MSG_HELLO_ACK 0x02
 #define HORSE_MSG_SEND_IDENTITY 0x03
 #define HORSE_MSG_CONFIRM 0x04
+#define HORSE_MSG_ERROR 0xFF
 
 static int connect_sock(const char *path)
 {
@@ -89,41 +91,114 @@ static void pump(int rounds)
         horse_provision_poll();
 }
 
+static int send_hello(int fd)
+{
+    uint8_t hdr[4] = { 1, HORSE_MSG_HELLO, 0, 0 };
+    uint8_t ack[4];
+
+    if (send_all(fd, hdr, 4) != 0)
+        return -1;
+    pump(32);
+    if (recv_exact(fd, ack, 4, 2000) != 0 || ack[1] != HORSE_MSG_HELLO_ACK)
+        return -1;
+    return 0;
+}
+
+static int send_identity(int fd, const horse_identity_keys_t *id)
+{
+    uint8_t hdr[4];
+
+    hdr[0] = 1;
+    hdr[1] = HORSE_MSG_SEND_IDENTITY;
+    hdr[2] = (uint8_t)(sizeof(*id) & 0xff);
+    hdr[3] = (uint8_t)((sizeof(*id) >> 8) & 0xff);
+    if (send_all(fd, hdr, 4) != 0 || send_all(fd, id, sizeof(*id)) != 0)
+        return -1;
+    pump(64);
+    return 0;
+}
+
+static int test_refuse_outside_mode(const char *sock,
+                                    const horse_identity_keys_t *id)
+{
+    uint8_t conf_hdr[4];
+    int fd = connect_sock(sock);
+
+    horse_provision_mode_leave();
+    if (fd < 0)
+        return -1;
+    pump(8);
+    if (send_hello(fd) != 0 || send_identity(fd, id) != 0) {
+        close(fd);
+        return -1;
+    }
+    if (recv_exact(fd, conf_hdr, 4, 2000) != 0
+        || conf_hdr[1] != HORSE_MSG_ERROR) {
+        std::printf("horse_provision_sock: expected ERROR outside mode\n");
+        close(fd);
+        return -1;
+    }
+    close(fd);
+    pump(8);
+    if (horse_provision_pending()) {
+        std::printf("horse_provision_sock: pending outside mode\n");
+        return -1;
+    }
+    return 0;
+}
+
 static int test_happy(const char *sock, const horse_identity_keys_t *id,
                       const uint8_t expect_fp[32])
 {
-    uint8_t hdr[4];
     uint8_t conf_hdr[4];
     uint8_t fp[32];
+    uint8_t got_fp[32];
     int fd = connect_sock(sock);
+
     if (fd < 0) {
         std::printf("horse_provision_sock: connect failed\n");
         return -1;
     }
+    horse_provision_mode_enter();
     pump(8);
-    hdr[0] = 1;
-    hdr[1] = HORSE_MSG_HELLO;
-    hdr[2] = 0;
-    hdr[3] = 0;
-    if (send_all(fd, hdr, 4) != 0) {
-        close(fd);
-        return -1;
-    }
-    pump(32);
-    if (recv_exact(fd, conf_hdr, 4, 2000) != 0
-        || conf_hdr[1] != HORSE_MSG_HELLO_ACK) {
+    if (send_hello(fd) != 0) {
         std::printf("horse_provision_sock: no HELLO_ACK\n");
         close(fd);
         return -1;
     }
-    hdr[1] = HORSE_MSG_SEND_IDENTITY;
-    hdr[2] = (uint8_t)(sizeof(*id) & 0xff);
-    hdr[3] = (uint8_t)((sizeof(*id) >> 8) & 0xff);
-    if (send_all(fd, hdr, 4) != 0 || send_all(fd, id, sizeof(*id)) != 0) {
+    if (send_identity(fd, id) != 0) {
         close(fd);
         return -1;
     }
-    pump(64);
+    if (!horse_provision_pending()) {
+        std::printf("horse_provision_sock: identity not pending\n");
+        close(fd);
+        return -1;
+    }
+    if (horse_provision_pending_fingerprint(got_fp) != 0
+        || memcmp(got_fp, expect_fp, 32) != 0) {
+        std::printf("horse_provision_sock: pending fp mismatch\n");
+        close(fd);
+        return -1;
+    }
+    /* CONFIRM must not arrive before user confirm. */
+    {
+        struct pollfd pfd;
+        pfd.fd = fd;
+        pfd.events = POLLIN;
+        pfd.revents = 0;
+        if (poll(&pfd, 1, 50) > 0) {
+            std::printf("horse_provision_sock: early CONFIRM\n");
+            close(fd);
+            return -1;
+        }
+    }
+    if (horse_provision_confirm() != 0) {
+        std::printf("horse_provision_sock: confirm failed\n");
+        close(fd);
+        return -1;
+    }
+    pump(16);
     if (recv_exact(fd, conf_hdr, 4, 2000) != 0
         || conf_hdr[1] != HORSE_MSG_CONFIRM) {
         std::printf("horse_provision_sock: no CONFIRM\n");
@@ -137,6 +212,46 @@ static int test_happy(const char *sock, const horse_identity_keys_t *id,
     }
     close(fd);
     pump(8);
+    horse_provision_mode_leave();
+    return 0;
+}
+
+static int test_timeout_refuses(const char *sock,
+                                const horse_identity_keys_t *id)
+{
+    uint8_t conf_hdr[4];
+    int fd;
+
+    horse_provision_test_set_now_ms(1000);
+    horse_provision_mode_enter();
+    /* Advance past the 120 s window. */
+    horse_provision_test_set_now_ms(1000 + HORSE_PROVISION_TIMEOUT_MS + 1);
+    horse_provision_poll();
+    if (horse_provision_mode_active()) {
+        std::printf("horse_provision_sock: mode still active after timeout\n");
+        horse_provision_test_set_now_ms(0);
+        return -1;
+    }
+
+    fd = connect_sock(sock);
+    if (fd < 0) {
+        horse_provision_test_set_now_ms(0);
+        return -1;
+    }
+    if (send_hello(fd) != 0 || send_identity(fd, id) != 0) {
+        close(fd);
+        horse_provision_test_set_now_ms(0);
+        return -1;
+    }
+    if (recv_exact(fd, conf_hdr, 4, 2000) != 0
+        || conf_hdr[1] != HORSE_MSG_ERROR) {
+        std::printf("horse_provision_sock: expected ERROR after timeout\n");
+        close(fd);
+        horse_provision_test_set_now_ms(0);
+        return -1;
+    }
+    close(fd);
+    horse_provision_test_set_now_ms(0);
     return 0;
 }
 
@@ -151,10 +266,8 @@ static int test_disconnect_before_reply(const char *sock)
         close(fd);
         return -1;
     }
-    /* Close without reading HELLO_ACK — must not SIGPIPE the process. */
     close(fd);
     pump(64);
-    /* Accept a new client afterwards. */
     fd = connect_sock(sock);
     if (fd < 0) {
         std::printf("horse_provision_sock: re-accept failed after drop\n");
@@ -178,7 +291,6 @@ static int test_disconnect_before_reply(const char *sock)
 
 static int test_oversized_len(const char *sock)
 {
-    /* len larger than buffer remainder: parser must reset, stay alive. */
     uint8_t hdr[4] = { 1, HORSE_MSG_HELLO, 0xff, 0xff };
     int fd = connect_sock(sock);
     if (fd < 0)
@@ -316,6 +428,10 @@ int main()
 
     if (test_path_and_mode(runtime) != 0)
         return -1;
+    if (test_refuse_outside_mode(sock, &id) != 0)
+        return -1;
+    if (test_timeout_refuses(sock, &id) != 0)
+        return -1;
     if (test_happy(sock, &id, fp) != 0)
         return -1;
     if (test_disconnect_before_reply(sock) != 0)
@@ -324,8 +440,6 @@ int main()
         return -1;
     if (test_partial_header(sock) != 0)
         return -1;
-
-    /* Happy path again after abuse. */
     if (test_happy(sock, &id, fp) != 0)
         return -1;
 

@@ -74,6 +74,8 @@ python3 scripts/horse_provision.py show myradio
 
 # Linux emulator socket (default $XDG_RUNTIME_DIR/openrtx_horse_prov.sock,
 # mode 0600; override OPENRTX_HORSE_PROV_SOCK)
+# Radio/emulator must be in Settings > Horse Prov first (120 s window).
+# Confirm the fingerprint with ENTER on the device after the tool sends.
 python3 scripts/horse_provision.py provision myradio --sock
 
 # USB serial (list candidates first)

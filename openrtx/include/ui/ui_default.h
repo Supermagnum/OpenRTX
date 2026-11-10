@@ -55,6 +55,9 @@ enum uiScreen
     SETTINGS_FM,
     SETTINGS_ACCESSIBILITY,
     SETTINGS_RESET2DEFAULTS,
+#ifdef CONFIG_HORSE
+    MENU_HORSE_PROVISION,
+#endif
     LOW_BAT
 };
 
@@ -94,6 +97,9 @@ enum settingsItems
 #endif
     S_FM,
     S_ACCESSIBILITY,
+#ifdef CONFIG_HORSE
+    S_HORSE_PROVISION,
+#endif
     S_RESET2DEFAULTS,
 };
 

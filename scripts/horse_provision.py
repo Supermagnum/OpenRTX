@@ -648,9 +648,13 @@ def provision_to_radio(identity, port=None, sock=None, baudrate=115200,
             print("Error: Radio did not respond with HELLO_ACK (got %s)" %
                   msg_type, file=sys.stderr)
             return False
+        if not json_mode:
+            print("Sending identity; confirm fingerprint on the radio "
+                  "(Settings > Horse Prov, ENTER). Window is 120 s.")
         send_provisioning_message(ser, MSG_SEND_IDENTITY,
                                   pack_identity_binary(identity))
-        msg_type, payload = recv_provisioning_message(ser, timeout=5.0)
+        # Firmware waits for menu confirm before MSG_CONFIRM (C15).
+        msg_type, payload = recv_provisioning_message(ser, timeout=130.0)
         if msg_type == MSG_CONFIRM:
             radio_fp = payload[:32] if payload and len(payload) >= 32 else b""
             if radio_fp != local_fp:

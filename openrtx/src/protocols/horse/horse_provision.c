@@ -7,10 +7,13 @@
 #include "protocols/horse/horse_provision.h"
 #include "protocols/horse/horse_keystore.h"
 #include "protocols/horse/horse_crypto.h"
+#include <errno.h>
 #include <string.h>
+#ifndef PLATFORM_LINUX
+#include "interfaces/delays.h"
+#endif
 
 #ifdef PLATFORM_LINUX
-#include <errno.h>
 #include <fcntl.h>
 #include <poll.h>
 #include <stdio.h>
@@ -32,19 +35,27 @@
 #define HORSE_MSG_CONFIRM 0x04U
 #define HORSE_MSG_ERROR 0xFFU
 
-typedef struct {
+struct horse_prov_hdr {
     uint8_t version;
     uint8_t type;
     uint16_t len;
-} horse_prov_hdr_t;
+};
 
 static uint8_t rx_buf[320];
 static size_t rx_len;
+
+static bool mode_active;
+static long long mode_deadline_ms;
+static bool have_pending;
+static horse_identity_keys_t pending_identity;
+static uint8_t pending_fp[32];
 
 #ifdef PLATFORM_LINUX
 static int prov_listen_fd = -1;
 static int prov_fd = -1;
 static char prov_sock_path[sizeof(((struct sockaddr_un *)0)->sun_path)];
+static uint64_t test_now_ms;
+static bool test_now_set;
 
 #define PROV_WRITE_TIMEOUT_MS 500
 
@@ -71,11 +82,6 @@ static void prov_accept_client(void)
     rx_len = 0;
 }
 
-/**
- * Resolve the Unix socket path into out (NUL-terminated).
- * Order: OPENRTX_HORSE_PROV_SOCK, else $XDG_RUNTIME_DIR/..., else
- * $XDG_STATE_HOME/OpenRTX/... or ~/.local/state/OpenRTX/...
- */
 int horse_provision_default_sock_path(char *out, size_t out_len)
 {
     const char *env;
@@ -118,7 +124,92 @@ int horse_provision_default_sock_path(char *out, size_t out_len)
         return -1;
     return 0;
 }
+
+void horse_provision_test_set_now_ms(uint64_t ms)
+{
+    if (ms == 0) {
+        test_now_set = false;
+        test_now_ms = 0;
+        return;
+    }
+    test_now_set = true;
+    test_now_ms = ms;
+}
 #endif
+
+static long long prov_now_ms(void)
+{
+#ifdef PLATFORM_LINUX
+    struct timespec ts;
+
+    if (test_now_set)
+        return (long long)test_now_ms;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (long long)ts.tv_sec * 1000LL + (long long)ts.tv_nsec / 1000000LL;
+#else
+    return getTick();
+#endif
+}
+
+static void prov_clear_pending(void)
+{
+    if (have_pending) {
+        horse_crypto_memzero(&pending_identity, sizeof pending_identity);
+        horse_crypto_memzero(pending_fp, sizeof pending_fp);
+        have_pending = false;
+    }
+}
+
+static void prov_bump_deadline(void)
+{
+    mode_deadline_ms = prov_now_ms() + (long long)HORSE_PROVISION_TIMEOUT_MS;
+}
+
+static void prov_check_timeout(void)
+{
+    if (!mode_active)
+        return;
+    if (prov_now_ms() < mode_deadline_ms)
+        return;
+    mode_active = false;
+    prov_clear_pending();
+}
+
+void horse_provision_mode_enter(void)
+{
+    mode_active = true;
+    prov_clear_pending();
+    prov_bump_deadline();
+}
+
+void horse_provision_mode_leave(void)
+{
+    mode_active = false;
+    prov_clear_pending();
+}
+
+bool horse_provision_mode_active(void)
+{
+    prov_check_timeout();
+    return mode_active;
+}
+
+bool horse_provision_pending(void)
+{
+    prov_check_timeout();
+    return have_pending;
+}
+
+int horse_provision_pending_fingerprint(uint8_t fp_out[32])
+{
+    if (fp_out == NULL)
+        return -EINVAL;
+    prov_check_timeout();
+    if (!have_pending)
+        return -ENOENT;
+    memcpy(fp_out, pending_fp, sizeof pending_fp);
+    return 0;
+}
 
 static ssize_t prov_read(void *buf, size_t len)
 {
@@ -130,7 +221,6 @@ static ssize_t prov_read(void *buf, size_t len)
         return -1;
     n = read(prov_fd, buf, len);
     if (n == 0) {
-        /* Peer closed. */
         prov_drop_client();
         return -1;
     }
@@ -209,7 +299,7 @@ static ssize_t prov_write(const void *buf, size_t len)
 
 static void prov_send(uint8_t type, const void *payload, uint16_t len)
 {
-    horse_prov_hdr_t hdr = {
+    struct horse_prov_hdr hdr = {
         .version = HORSE_PROV_VERSION,
         .type = type,
         .len = len,
@@ -221,15 +311,52 @@ static void prov_send(uint8_t type, const void *payload, uint16_t len)
         (void)prov_write(payload, len);
 }
 
+int horse_provision_confirm(void)
+{
+    uint8_t fp[32];
+
+    prov_check_timeout();
+    if (!mode_active)
+        return -EPERM;
+    if (!have_pending)
+        return -ENOENT;
+    if (!horse_keystore_has_passphrase())
+        return -EACCES;
+    if (!horse_keystore_store_with_held(&pending_identity))
+        return -EIO;
+    if (!horse_keystore_fingerprint(fp))
+        return -EIO;
+
+    prov_send(HORSE_MSG_CONFIRM, fp, (uint16_t)sizeof fp);
+    prov_clear_pending();
+    prov_bump_deadline();
+    return 0;
+}
+
+int horse_provision_reject(void)
+{
+    if (!have_pending)
+        return -ENOENT;
+    prov_clear_pending();
+    prov_bump_deadline();
+    return 0;
+}
+
 static void prov_handle_identity(const uint8_t *payload, uint16_t len)
 {
+    const horse_identity_keys_t *identity;
+
+    if (!horse_provision_mode_active()) {
+        prov_send(HORSE_MSG_ERROR, "not provisioning", 16);
+        return;
+    }
+
     if (len < sizeof(horse_identity_keys_t)) {
         prov_send(HORSE_MSG_ERROR, "bad identity size", 17);
         return;
     }
 
-    const horse_identity_keys_t *identity =
-        (const horse_identity_keys_t *)payload;
+    identity = (const horse_identity_keys_t *)payload;
 
     if (identity->version != 1) {
         prov_send(HORSE_MSG_ERROR, "bad identity version", 20);
@@ -245,19 +372,15 @@ static void prov_handle_identity(const uint8_t *payload, uint16_t len)
         prov_send(HORSE_MSG_ERROR, "no passphrase", 13);
         return;
     }
-
-    if (!horse_keystore_store_with_held(identity)) {
-        prov_send(HORSE_MSG_ERROR, "store failed", 12);
-        return;
-    }
-
-    uint8_t fp[32];
-    if (!horse_keystore_fingerprint(fp)) {
+    if (!horse_crypto_identity_fingerprint(identity, pending_fp)) {
         prov_send(HORSE_MSG_ERROR, "fingerprint failed", 18);
         return;
     }
 
-    prov_send(HORSE_MSG_CONFIRM, fp, sizeof fp);
+    memcpy(&pending_identity, identity, sizeof pending_identity);
+    have_pending = true;
+    prov_bump_deadline();
+    /* Do not store yet: UI must show fingerprint and call confirm. */
 }
 
 static void prov_feed_byte(uint8_t b)
@@ -267,10 +390,10 @@ static void prov_feed_byte(uint8_t b)
 
     rx_buf[rx_len++] = b;
 
-    if (rx_len < sizeof(horse_prov_hdr_t))
+    if (rx_len < sizeof(struct horse_prov_hdr))
         return;
 
-    horse_prov_hdr_t *hdr = (horse_prov_hdr_t *)rx_buf;
+    struct horse_prov_hdr *hdr = (struct horse_prov_hdr *)rx_buf;
     if (hdr->version != HORSE_PROV_VERSION) {
         memmove(rx_buf, rx_buf + 1, rx_len - 1);
         rx_len--;
@@ -278,16 +401,16 @@ static void prov_feed_byte(uint8_t b)
     }
 
     /* C15: reject oversized length, reset parser. */
-    if (hdr->len > sizeof(rx_buf) - sizeof(horse_prov_hdr_t)) {
+    if (hdr->len > sizeof(rx_buf) - sizeof(struct horse_prov_hdr)) {
         rx_len = 0;
         return;
     }
 
-    size_t need = sizeof(horse_prov_hdr_t) + hdr->len;
+    size_t need = sizeof(struct horse_prov_hdr) + hdr->len;
     if (rx_len < need)
         return;
 
-    const uint8_t *payload = rx_buf + sizeof(horse_prov_hdr_t);
+    const uint8_t *payload = rx_buf + sizeof(struct horse_prov_hdr);
 
     switch (hdr->type) {
         case HORSE_MSG_HELLO:
@@ -301,7 +424,6 @@ static void prov_feed_byte(uint8_t b)
             break;
     }
 
-        /* Client may have been dropped mid-reply. */
 #ifdef PLATFORM_LINUX
     if (prov_fd < 0)
         return;
@@ -322,11 +444,13 @@ static void prov_consume_bytes(const uint8_t *data, size_t n)
 void horse_provision_init(void)
 {
     rx_len = 0;
+    mode_active = false;
+    have_pending = false;
+    mode_deadline_ms = 0;
 #ifdef PLATFORM_LINUX
     /*
      * Unix stream socket (not a FIFO). Default under XDG_RUNTIME_DIR
      * (or a per-user state dir). Override with OPENRTX_HORSE_PROV_SOCK.
-     * Untested on hardware radios (USB VCOM path unchanged).
      */
     struct sockaddr_un addr;
     struct stat st;
@@ -345,7 +469,6 @@ void horse_provision_init(void)
         return;
     }
 
-    /* Ensure parent directory exists (mode 0700 for fallback state dir). */
     memcpy(dirbuf, prov_sock_path, sizeof dirbuf);
     slash = strrchr(dirbuf, '/');
     if (slash != NULL && slash != dirbuf) {
@@ -395,7 +518,6 @@ void horse_provision_init(void)
     }
     umask(old_umask);
 
-    /* fchmod is not reliable on all AF_UNIX implementations; chmod path. */
     if (chmod(prov_sock_path, 0600) < 0) {
         fprintf(stderr, "horse_provision: chmod %s: %s\n", prov_sock_path,
                 strerror(errno));
@@ -413,8 +535,11 @@ void horse_provision_init(void)
 void horse_provision_poll(void)
 {
     uint8_t chunk[64];
-    ssize_t n = prov_read(chunk, sizeof chunk);
+    ssize_t n;
 
+    prov_check_timeout();
+
+    n = prov_read(chunk, sizeof chunk);
     if (n <= 0)
         return;
 
