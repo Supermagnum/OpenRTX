@@ -42,5 +42,5 @@ jobs:
           # shellcheck disable=SC1091
           source .venv/bin/activate
           uv pip install ruff
-          ruff check scripts/horse_provision.py tests/python
+          ruff check scripts/horse_provision.py scripts/horse_openpgp.py tests/python
 
