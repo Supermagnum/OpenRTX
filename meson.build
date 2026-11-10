@@ -83,7 +83,8 @@ horse_src = [
              'openrtx/src/protocols/horse/horse_randombytes.c',
              'openrtx/src/protocols/horse/horse_keystore.c',
              'openrtx/src/protocols/horse/horse_peers.c',
-             'openrtx/src/protocols/horse/horse_heap.c']
+             'openrtx/src/protocols/horse/horse_heap.c',
+             'openrtx/src/rtx/OpMode_Horse.cpp']
 
 openrtx_inc = ['openrtx/include', 'platform']
 
@@ -424,11 +425,11 @@ linux_inc = ['platform/targets/linux',
              'platform/drivers/audio',
              'platform/drivers/tones']
 
-linux_def = {'PLATFORM_LINUX': '', 'VP_USE_FILESYSTEM':''}
+linux_def = {'PLATFORM_LINUX': '', 'VP_USE_FILESYSTEM':'', 'CONFIG_HORSE': ''}
 
 sdl_dep     = dependency('SDL2',     required: false)
 threads_dep = dependency('threads',  required: false)
-linux_src  += openrtx_src
+linux_src  += openrtx_src + horse_src
 linux_inc  += openrtx_inc
 linux_def  += openrtx_def
 linux_def  += {'sniprintf':'snprintf', 'vsniprintf':'vsnprintf'}
@@ -1304,6 +1305,18 @@ horse_codec_test = executable('horse_codec_test',
                               link_args : linux_l_args)
 
 
+
+horse_info_test = executable('horse_info_test',
+                             sources : ['tests/unit/horse_info.cpp'],
+                             include_directories : openrtx_inc,
+                             c_args : linux_c_args,
+                             cpp_args : linux_cpp_args,
+                             link_args : linux_l_args)
+
+horse_tx_fail_test = executable('horse_tx_fail_test',
+                                sources : unit_test_src + ['tests/unit/horse_tx_fail.cpp'],
+                                kwargs : unit_test_opts)
+
 horse_loopback_test = executable('horse_loopback_test',
                                  sources : unit_test_src + horse_src + ['tests/unit/horse_loopback.cpp',
                                                             'tests/unit/horse_session_modem.cpp'],
@@ -1450,6 +1463,8 @@ test('Horse Peers Unit Test', horse_peers_test)
 test('Horse Keystore Unit Test', horse_keystore_test)
 test('Horse Randombytes Unit Test', horse_randombytes_test)
 test('Horse Loopback Unit Test', horse_loopback_test)
+test('Horse Info Reset Test', horse_info_test)
+test('Horse TX Crypto Fail Test', horse_tx_fail_test)
 ## test('Linux InputStream Test', linux_inputStream_test)
 test('minmea conversion Test', minmea_conversion_test)
 test('UI Check Standby Test', ui_check_standby_test)
