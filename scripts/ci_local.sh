@@ -77,7 +77,7 @@ meson compile -C "$BUILD_DIR" linux \
   horse_peers_test horse_keystore_test horse_host_interop_test \
   horse_loopback_test ui_check_standby_test m17_packet_test \
   dsp_oversampling_test gfx_text_test m17_replay_test cps_layout_test \
-  horse_fec_v2_sim horse_crypto_worker_test horse_tx_fail_test \
+  horse_crypto_worker_test horse_tx_fail_test \
   horse_randombytes_test audio_codec_test horse_provision_sock_test \
   horse_heap_test
 
