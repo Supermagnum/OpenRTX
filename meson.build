@@ -69,7 +69,12 @@ openrtx_src = ['openrtx/src/core/state.c',
                'openrtx/src/protocols/M17/FrameDecoder.cpp',
                'openrtx/src/protocols/M17/LinkSetupFrame.cpp']
 
-horse_src = []
+horse_src = [
+             'openrtx/src/protocols/horse/HorseFrameEncoder.cpp',
+             'openrtx/src/protocols/horse/HorseFrameDecoder.cpp',
+             'openrtx/src/protocols/horse/HorseVoiceCodec.cpp',
+             'openrtx/src/protocols/horse/melpe_horse.c'
+]
 
 openrtx_inc = ['openrtx/include', 'platform']
 
@@ -1262,6 +1267,29 @@ m17_rrc_test = executable('m17_rrc_test',
                           sources: unit_test_src + ['tests/unit/M17_rrc.cpp'],
                           kwargs: unit_test_opts)
 
+
+horse_frame_test_src = ['openrtx/src/protocols/horse/HorseFrameEncoder.cpp',
+                        'openrtx/src/protocols/horse/HorseFrameDecoder.cpp',
+                        'openrtx/src/protocols/horse/HorseVoiceCodec.cpp',
+                        'openrtx/src/protocols/horse/melpe_horse.c',
+                        'openrtx/src/core/crc.c']
+
+horse_frame_test = executable('horse_frame_test',
+                              sources : horse_frame_test_src + ['tests/unit/horse_frame.cpp'],
+                              include_directories : openrtx_inc,
+                              c_args : linux_c_args,
+                              cpp_args : linux_cpp_args,
+                              link_args : linux_l_args)
+
+horse_codec_test = executable('horse_codec_test',
+                              sources : ['openrtx/src/protocols/horse/melpe_horse.c',
+                                         'tests/unit/horse_codec.cpp'],
+                              include_directories : openrtx_inc,
+                              dependencies : linux_deps,
+                              c_args : linux_c_args,
+                              cpp_args : linux_cpp_args,
+                              link_args : linux_l_args)
+
 cps_test = executable('cps_test',
                       sources : unit_test_src + ['tests/unit/cps.cpp'],
                       kwargs  : unit_test_opts)
@@ -1322,6 +1350,8 @@ test('M17 RRC Test',          m17_rrc_test)
 test('M17 Callsign Unit Test',          m17_callsign_test)
 test('M17 Meta Text Unit Test',         m17_metatext_test)
 test('Codeplug Test',         cps_test)
+test('Horse Frame Unit Test', horse_frame_test)
+test('Horse Codec Unit Test', horse_codec_test)
 ## test('Linux InputStream Test', linux_inputStream_test)
 test('minmea conversion Test', minmea_conversion_test)
 test('UI Check Standby Test', ui_check_standby_test)
