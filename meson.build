@@ -1357,7 +1357,14 @@ horse_codec_test = executable('horse_codec_test',
 
 
 
+horse_loopback_test = executable('horse_loopback_test',
+                                 sources : unit_test_src + horse_src + ['tests/unit/horse_loopback.cpp',
+                                                            'tests/unit/horse_session_modem.cpp'],
+                                 kwargs : unit_test_opts)
+
+
 test('M17 Golay Unit Test',   m17_golay_test)
+test('Horse Loopback Unit Test', horse_loopback_test)
 test('Horse Codec Unit Test', horse_codec_test)
 test('Horse Frame Unit Test', horse_frame_test)
 test('M17 Viterbi Unit Test', m17_viterbi_test)
