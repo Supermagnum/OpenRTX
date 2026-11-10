@@ -76,7 +76,8 @@ horse_src = [
              'openrtx/src/protocols/horse/melpe_horse.c'
 ,
              'openrtx/src/protocols/horse/HorseModulator.cpp',
-             'openrtx/src/protocols/horse/HorseDemodulator.cpp']
+             'openrtx/src/protocols/horse/HorseDemodulator.cpp',
+             'openrtx/src/core/horse_codec.c']
 
 openrtx_inc = ['openrtx/include', 'platform']
 
