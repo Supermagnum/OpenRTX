@@ -40,6 +40,13 @@ jobs:
         run: |
           uv tool install "gcovr>=7.2"
           uv --color never tool dir --bin >> "$GITHUB_PATH"
+      - name: Install Horse Python deps
+        run: |
+          uv venv .venv
+          # shellcheck disable=SC1091
+          source .venv/bin/activate
+          uv pip install pynacl pyserial pytest ruff
+          echo "${{ github.workspace }}/.venv/bin" >> "$GITHUB_PATH"
       - name: setup meson
         run: |
           cd ${{github.workspace}}
