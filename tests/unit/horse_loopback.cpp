@@ -16,6 +16,10 @@
 #include "protocols/horse/HorseDemodulator.hpp"
 #include "protocols/horse/HorseConstants.hpp"
 #include "protocols/horse/HorseUtils.hpp"
+#include "protocols/horse/horse_crypto.h"
+#ifdef HAVE_LIBSODIUM
+#include <sodium.h>
+#endif
 #include "protocols/M17/DSP.hpp"
 #include "core/fir.hpp"
 #include <cmath>
@@ -1686,6 +1690,8 @@ static int test_long_clock_tracking()
     return fails == 0 ? 0 : -1;
 }
 
+int test_three_mode_loopback(void);
+
 int main(int argc, char **argv)
 {
     if (argc > 1 && std::string(argv[1]) == "long")
@@ -1723,6 +1729,8 @@ int main(int argc, char **argv)
         return -1;
     if (test_long_clock_smoke() != 0)
         return -1;
-    std::printf("horse_loopback: modem tests passed\n");
+    if (test_three_mode_loopback() != 0)
+        return -1;
+    std::printf("horse_loopback: all tests passed\n");
     return 0;
 }
