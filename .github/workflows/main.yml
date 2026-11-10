@@ -19,8 +19,10 @@ concurrency:
 
 jobs:
   unit-test:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
+    env:
+      HORSE_REQUIRE_CRYPTO: "1"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -29,7 +31,7 @@ jobs:
       - name: install-deps
         run: |
           sudo apt update
-          sudo apt install -y git pkg-config build-essential meson libsdl2-dev libreadline-dev dfu-util cmake libusb-1.0-0 libusb-1.0-0-dev libcodec2-dev codec2 catch2
+          sudo apt install -y git pkg-config build-essential meson libsdl2-dev libreadline-dev dfu-util cmake libusb-1.0-0 libusb-1.0-0-dev libcodec2-dev codec2 catch2 libsodium-dev
       - name: Install uv
         uses: astral-sh/setup-uv@v7
       # gcovr is a standalone CLI rather than an import dependency, so install
@@ -38,11 +40,18 @@ jobs:
         run: |
           uv tool install "gcovr>=7.2"
           uv --color never tool dir --bin >> "$GITHUB_PATH"
+          uv venv .venv
+          # shellcheck disable=SC1091
+          source .venv/bin/activate
+          uv pip install pynacl pyserial pytest ruff
+          echo "${{ github.workspace }}/.venv/bin" >> "$GITHUB_PATH"
       - name: setup meson
         run: |
           cd ${{github.workspace}}
           meson setup build -Db_coverage=true
       - name: Run unit tests
+        env:
+          HORSE_REQUIRE_CRYPTO: "1"
         run: meson test -C build --print-errorlogs --test-args '--reporter junit'
       - name: Publish Test Report
         uses: mikepenz/action-junit-report@v6
@@ -61,6 +70,8 @@ jobs:
       - name: Add coverage to Github step summary
         run: |
           cat build/coverage/coverage.md >> $GITHUB_STEP_SUMMARY
+
+
   build-zephyr:
     runs-on: ubuntu-22.04
     timeout-minutes: 45
@@ -136,6 +147,7 @@ jobs:
             meson compile -C build_cm7 openrtx_cs7000p_wrap &&
             meson compile -C build_cm7 openrtx_cs7000p_dfu &&
             meson compile -C build_cm4 openrtx_rt4d_bin &&
+            python3 scripts/check_horse_stack_usage.py build_cm4 &&
             chmod -R a+rX build_linux build_cm4 build_cm7
       # The build runs as root in the container, so the binaries land in the
       # bind-mounted workspace owned by root. Copying rather than moving (as
