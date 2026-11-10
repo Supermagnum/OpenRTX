@@ -67,6 +67,7 @@
 #include "core/beeps.h"
 #ifdef CONFIG_HORSE
 #include "protocols/horse/horse_keystore.h"
+#include "protocols/horse/horse_provision.h"
 #endif
 
 /* UI main screen functions, their implementation is in "ui_main.c" */
@@ -105,6 +106,9 @@ extern void _ui_drawSettingsFM(ui_state_t* ui_state);
 extern void _ui_drawSettingsVoicePrompts(ui_state_t* ui_state);
 extern void _ui_drawSettingsReset2Defaults(ui_state_t* ui_state);
 extern void _ui_drawSettingsRadio(ui_state_t* ui_state);
+#ifdef CONFIG_HORSE
+extern void _ui_drawHorseProvision(ui_state_t *ui_state);
+#endif
 extern bool _ui_drawMacroMenu(ui_state_t* ui_state);
 extern void _ui_reset_menu_anouncement_tracking();
 // TODO: get these from ui strings / currentLanguage
@@ -136,6 +140,9 @@ const char *settings_items[] =
 #endif
     "FM",
     "Accessibility",
+#ifdef CONFIG_HORSE
+    "Horse Prov",
+#endif
     "Default Settings"
 };
 
@@ -2052,6 +2059,12 @@ void ui_updateFSM(bool *sync_rtx)
                         case S_ACCESSIBILITY:
                             state.ui_screen = SETTINGS_ACCESSIBILITY;
                             break;
+#ifdef CONFIG_HORSE
+                        case S_HORSE_PROVISION:
+                            horse_provision_mode_enter();
+                            state.ui_screen = MENU_HORSE_PROVISION;
+                            break;
+#endif
                         case S_RESET2DEFAULTS:
                             state.ui_screen = SETTINGS_RESET2DEFAULTS;
                             break;
@@ -2095,6 +2108,22 @@ void ui_updateFSM(bool *sync_rtx)
                 if(msg.keys & KEY_ESC)
                     _ui_menuBack(MENU_TOP);
                 break;
+#ifdef CONFIG_HORSE
+            case MENU_HORSE_PROVISION:
+                if (!horse_provision_mode_active()) {
+                    horse_provision_mode_leave();
+                    _ui_menuBack(MENU_SETTINGS);
+                } else if (msg.keys & KEY_ENTER) {
+                    if (horse_provision_pending())
+                        (void)horse_provision_confirm();
+                } else if (msg.keys & KEY_ESC) {
+                    if (horse_provision_pending())
+                        (void)horse_provision_reject();
+                    horse_provision_mode_leave();
+                    _ui_menuBack(MENU_SETTINGS);
+                }
+                break;
+#endif
             // Info menu screen
             case MENU_INFO:
                 if(msg.keys & KEY_UP || msg.keys & KNOB_LEFT)
@@ -2826,6 +2855,11 @@ bool ui_updateGUI()
         case SETTINGS_RADIO:
             _ui_drawSettingsRadio(&ui_state);
             break;
+#ifdef CONFIG_HORSE
+        case MENU_HORSE_PROVISION:
+            _ui_drawHorseProvision(&ui_state);
+            break;
+#endif
         // Low battery screen
         case LOW_BAT:
             _ui_drawLowBatteryScreen();
