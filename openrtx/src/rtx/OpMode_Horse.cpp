@@ -22,6 +22,12 @@
 #include "protocols/horse/horse_randombytes.h"
 #include "rtx/rtx.h"
 #include <cstring>
+#ifdef HAVE_LIBSODIUM
+#include <sodium.h>
+#endif
+#ifdef PLATFORM_LINUX
+#include "emulator/emulator.h"
+#endif
 
 static bool horse_is_sig_frame(uint16_t fn)
 {
@@ -761,6 +767,114 @@ int horse_test_tx_crypto_fail(void)
     st.horseError = HORSE_ERR_TX_CRYPTO;
     if (st.horseError != HORSE_ERR_TX_CRYPTO)
         return -4;
+    return 0;
+}
+
+/*
+ * C18: drive OpMode_Horse::sendTxVoiceFrame into a frame buffer, then
+ * recover voice through the peer OpMode decoder for encrypt, sign, and
+ * combined. Cleartext ("plain") TX is refused by C2 (horse_tx_fail).
+ * Full RF remains needs-hardware. Modem-layer three-mode coverage is
+ * also in horse_session_modem.cpp.
+ */
+int horse_opmode_one_mode(bool want_enc, bool want_sign)
+{
+#ifdef HAVE_LIBSODIUM
+    OpMode_Horse tx;
+    OpMode_Horse rx;
+    horse::frame_t fr;
+    horse::call_t src{};
+    horse::call_t dst{};
+    uint8_t eph_pk[32];
+    uint8_t eph_sk[32];
+    uint8_t flags = 0;
+    uint8_t melpe[HORSE_CODEC_FRAME_BYTES];
+    uint8_t k_enc[32];
+    uint8_t k_tag[32];
+    uint8_t payload[12];
+    uint8_t tag[4];
+    uint16_t fn = 0;
+
+    if (!horse_crypto_available())
+        return 0;
+
+    memset(melpe, 0x5A, sizeof melpe);
+    if (want_enc)
+        flags |= horse::LSF_FLAG_ENCRYPTED;
+    if (want_sign)
+        flags |= horse::LSF_FLAG_SIGNED;
+
+    crypto_kx_keypair(eph_pk, eph_sk);
+    memset(&tx.txId, 0, sizeof tx.txId);
+    tx.txId.version = 1;
+    crypto_sign_ed25519_keypair(tx.txId.ed25519_pk, tx.txId.ed25519_sk);
+    crypto_kx_keypair(tx.txId.x25519_pk, tx.txId.x25519_sk);
+
+    if (!horse_crypto_derive_session_keys(
+            tx.txId.x25519_sk, eph_pk, src.data(), dst.data(), eph_pk, flags,
+            horse::LSF_PROTOCOL_VERSION, k_enc, k_tag))
+        return -10;
+    memcpy(tx.sessionKey, k_enc, sizeof k_enc);
+    memcpy(tx.frameAuthKey, k_tag, sizeof k_tag);
+    tx.sessionValid = true;
+    tx.encryptTx = want_enc;
+    tx.signTx = want_sign;
+    /* Signed TX also needs a session signature buffer; fill zeros so the
+     * encoder path can run without a live sign job in this unit test. */
+    memset(tx.txSessionSig, 0, sizeof tx.txSessionSig);
+    tx.txSigSent = true;
+
+    horse_crypto_worker_init();
+    /* Hold PTT so horse_wait_job(true) does not cancel mid-frame. */
+    bool saved_ptt = emulator_state.PTTstatus;
+    emulator_state.PTTstatus = true;
+    if (!tx.sendTxVoiceFrame(melpe, false, fr)) {
+        emulator_state.PTTstatus = saved_ptt;
+        horse_crypto_worker_terminate();
+        return -11;
+    }
+    emulator_state.PTTstatus = saved_ptt;
+    horse_crypto_worker_terminate();
+
+    if (fr[0] != horse::VOICE_SYNC_WORD[0]
+        || fr[1] != horse::VOICE_SYNC_WORD[1])
+        return -12;
+
+    rx.decoder.getVoicePayload(fr, payload, tag, &fn);
+    if (want_enc) {
+        uint8_t nonce[12];
+        uint8_t plain[12];
+        horse_crypto_voice_nonce_from_fn(fn, nonce);
+        if (!horse_crypto_voice_decrypt(k_enc, k_tag, HORSE_VOICE_DIR_FORWARD,
+                                        fn, nonce, payload, sizeof payload, tag,
+                                        plain))
+            return -13;
+    } else if (!horse_crypto_voice_auth_verify(k_tag, HORSE_VOICE_DIR_FORWARD,
+                                               fn, payload, tag)) {
+        return -14;
+    }
+    (void)eph_sk;
+    return 0;
+#else
+    (void)want_enc;
+    (void)want_sign;
+    return 0;
+#endif
+}
+
+int horse_test_opmode_buffer_e2e(void)
+{
+    int rc;
+
+    rc = horse_opmode_one_mode(true, false);
+    if (rc != 0)
+        return rc - 100;
+    rc = horse_opmode_one_mode(false, true);
+    if (rc != 0)
+        return rc - 200;
+    rc = horse_opmode_one_mode(true, true);
+    if (rc != 0)
+        return rc - 300;
     return 0;
 }
 #endif

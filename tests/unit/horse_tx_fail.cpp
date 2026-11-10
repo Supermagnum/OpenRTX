@@ -18,6 +18,7 @@
 #include <cstring>
 
 int horse_test_tx_crypto_fail(void);
+int horse_test_opmode_buffer_e2e(void);
 
 static int test_eot_sync(void)
 {
@@ -89,6 +90,11 @@ int main(void)
     if (horse_tx_vhf_refused(0, 0)) {
         std::printf("horse_tx_fail: no-band must allow TX\n");
         return -10;
+    }
+    rc = horse_test_opmode_buffer_e2e();
+    if (rc != 0) {
+        std::printf("horse_tx_fail: opmode e2e %d\n", rc);
+        return rc;
     }
     return 0;
 }

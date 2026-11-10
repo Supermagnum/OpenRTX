@@ -55,6 +55,8 @@ private:
 
 #ifdef PLATFORM_LINUX
     friend int horse_test_tx_crypto_fail(void);
+    friend int horse_test_opmode_buffer_e2e(void);
+    friend int horse_opmode_one_mode(bool want_enc, bool want_sign);
 #endif
     bool startRx;
     bool startTx;
