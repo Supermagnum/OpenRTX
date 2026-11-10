@@ -417,11 +417,11 @@ int main()
     crypto_kx_keypair(id.x25519_pk, id.x25519_sk);
 
     horse_keystore_init();
-    if (!horse_keystore_hold_passphrase(pass, strlen(pass))) {
+    if ((horse_keystore_hold_passphrase(pass, strlen(pass)) != 0)) {
         std::printf("horse_provision_sock: hold passphrase failed\n");
         return -1;
     }
-    if (!horse_crypto_identity_fingerprint(&id, fp))
+    if ((horse_crypto_identity_fingerprint(&id, fp) != 0))
         return -1;
 
     horse_provision_init();

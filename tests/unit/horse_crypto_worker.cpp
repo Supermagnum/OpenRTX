@@ -145,8 +145,8 @@ static int test_stack_hwm(void)
     memset(g_pt, 0x11, sizeof g_pt);
     memset(g_salt, 0x22, sizeof g_salt);
     memset(g_msg, 0x33, sizeof g_msg);
-    if (!horse_crypto_x25519_keypair(g_pk, g_sk)
-        || !horse_crypto_x25519_keypair(g_pk2, g_sk2))
+    if ((horse_crypto_x25519_keypair(g_pk, g_sk) != 0)
+        || (horse_crypto_x25519_keypair(g_pk2, g_sk2) != 0))
         return -1;
 #ifdef HAVE_LIBSODIUM
     if (crypto_sign_keypair(g_edpk, g_edsk) != 0)
@@ -154,10 +154,11 @@ static int test_stack_hwm(void)
 #else
     return -1;
 #endif
-    if (!horse_crypto_sign(g_edsk, g_msg, sizeof g_msg, g_sig))
+    if ((horse_crypto_sign(g_edsk, g_msg, sizeof g_msg, g_sig) != 0))
         return -1;
-    if (!horse_crypto_derive_session_keys(g_sk, g_pk2, g_src, g_dst, g_pk, 1,
-                                          HORSE_LSF_VERSION, g_kenc, g_ktag))
+    if ((horse_crypto_derive_session_keys(g_sk, g_pk2, g_src, g_dst, g_pk, 1,
+                                          HORSE_LSF_VERSION, g_kenc, g_ktag)
+         != 0))
         return -1;
 
     size_t empty_used = 0;
@@ -220,45 +221,49 @@ static int test_handoff_and_cancel(void)
     uint8_t salt[16];
 
     horse_crypto_worker_init();
-    if (!horse_crypto_req_x25519_keypair()
+    if ((horse_crypto_req_x25519_keypair() != 0)
         || horse_crypto_wait() != HORSE_CRYPTO_ST_DONE
-        || !horse_crypto_take_keypair(pk, sk))
+        || (horse_crypto_take_keypair(pk, sk) != 0))
         return -1;
-    if (!horse_crypto_req_x25519_keypair()
+    if ((horse_crypto_req_x25519_keypair() != 0)
         || horse_crypto_wait() != HORSE_CRYPTO_ST_DONE
-        || !horse_crypto_take_keypair(pk2, sk2))
+        || (horse_crypto_take_keypair(pk2, sk2) != 0))
         return -1;
-    if (!horse_crypto_req_derive(sk, pk2, g_src, g_dst, pk, 1,
+    if ((horse_crypto_req_derive(sk, pk2, g_src, g_dst, pk, 1,
                                  HORSE_LSF_VERSION)
+         != 0)
         || horse_crypto_wait() != HORSE_CRYPTO_ST_DONE
-        || !horse_crypto_take_session(kenc, ktag))
+        || (horse_crypto_take_session(kenc, ktag) != 0))
         return -1;
 #ifdef HAVE_LIBSODIUM
     if (crypto_sign_keypair(g_edpk, g_edsk) != 0)
         return -1;
 #endif
-    if (!horse_crypto_req_sign(g_edsk, g_msg, sizeof g_msg)
+    if ((horse_crypto_req_sign(g_edsk, g_msg, sizeof g_msg) != 0)
         || horse_crypto_wait() != HORSE_CRYPTO_ST_DONE
-        || !horse_crypto_take_sig(sig))
+        || (horse_crypto_take_sig(sig) != 0))
         return -1;
-    if (!horse_crypto_req_verify(g_edpk, g_msg, sizeof g_msg, sig)
+    if ((horse_crypto_req_verify(g_edpk, g_msg, sizeof g_msg, sig) != 0)
         || horse_crypto_wait() != HORSE_CRYPTO_ST_DONE)
         return -1;
     memset(pt, 0x44, sizeof pt);
     horse_crypto_voice_nonce_from_fn(3, nonce);
-    if (!horse_crypto_req_voice_enc(kenc, ktag, HORSE_VOICE_DIR_FORWARD, 3,
+    if ((horse_crypto_req_voice_enc(kenc, ktag, HORSE_VOICE_DIR_FORWARD, 3,
                                     nonce, pt, 12)
+         != 0)
         || horse_crypto_wait() != HORSE_CRYPTO_ST_DONE
-        || !horse_crypto_take_voice_enc(ct, tag, 12))
+        || (horse_crypto_take_voice_enc(ct, tag, 12) != 0))
         return -1;
-    if (!horse_crypto_req_voice_dec(kenc, ktag, HORSE_VOICE_DIR_FORWARD, 3,
+    if ((horse_crypto_req_voice_dec(kenc, ktag, HORSE_VOICE_DIR_FORWARD, 3,
                                     nonce, ct, 12, tag)
+         != 0)
         || horse_crypto_wait() != HORSE_CRYPTO_ST_DONE
-        || !horse_crypto_take_voice_dec(out, 12) || memcmp(out, pt, 12) != 0)
+        || (horse_crypto_take_voice_dec(out, 12) != 0)
+        || memcmp(out, pt, 12) != 0)
         return -1;
 
     memset(salt, 7, sizeof salt);
-    if (!horse_crypto_req_argon2("ptt-cancel", 10, salt, sizeof salt))
+    if ((horse_crypto_req_argon2("ptt-cancel", 10, salt, sizeof salt) != 0))
         return -1;
     horse_crypto_cancel();
     enum horse_crypto_st st = horse_crypto_wait();
@@ -274,7 +279,7 @@ static int test_handoff_and_cancel(void)
                 (int)st);
 
     /* Second argon2: cancel immediately (PTT released before compute). */
-    if (!horse_crypto_req_argon2("ptt-release", 11, salt, sizeof salt))
+    if ((horse_crypto_req_argon2("ptt-release", 11, salt, sizeof salt) != 0))
         return -1;
     horse_crypto_cancel();
     st = horse_crypto_wait();

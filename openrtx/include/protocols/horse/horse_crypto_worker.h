@@ -15,6 +15,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <stdbool.h>
+#include <errno.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -35,45 +36,49 @@ void horse_crypto_cancel(void);
 enum horse_crypto_st horse_crypto_poll(void);
 enum horse_crypto_st horse_crypto_wait(void);
 
-bool horse_crypto_req_x25519_keypair(void);
-bool horse_crypto_take_keypair(uint8_t pk[32], uint8_t sk[32]);
+/*
+ * Request/take APIs return 0 on success, -EBUSY if a job is already
+ * pending, -EAGAIN if no result is ready, or another negative errno.
+ */
+int horse_crypto_req_x25519_keypair(void);
+int horse_crypto_take_keypair(uint8_t pk[32], uint8_t sk[32]);
 
-bool horse_crypto_req_derive(const uint8_t *local_sk, const uint8_t *remote_pk,
-                             const uint8_t src[6], const uint8_t dst[6],
-                             const uint8_t eph_pk[32], uint8_t flags,
-                             uint8_t version);
-bool horse_crypto_take_session(uint8_t k_enc[32], uint8_t k_tag[32]);
+int horse_crypto_req_derive(const uint8_t *local_sk, const uint8_t *remote_pk,
+                            const uint8_t src[6], const uint8_t dst[6],
+                            const uint8_t eph_pk[32], uint8_t flags,
+                            uint8_t version);
+int horse_crypto_take_session(uint8_t k_enc[32], uint8_t k_tag[32]);
 
-bool horse_crypto_req_sign(const uint8_t sk[64], const uint8_t *msg,
-                           size_t msg_len);
-bool horse_crypto_take_sig(uint8_t sig[64]);
+int horse_crypto_req_sign(const uint8_t sk[64], const uint8_t *msg,
+                          size_t msg_len);
+int horse_crypto_take_sig(uint8_t sig[64]);
 
-bool horse_crypto_req_verify(const uint8_t pk[32], const uint8_t *msg,
-                             size_t msg_len, const uint8_t sig[64]);
+int horse_crypto_req_verify(const uint8_t pk[32], const uint8_t *msg,
+                            size_t msg_len, const uint8_t sig[64]);
 
-bool horse_crypto_req_voice_enc(const uint8_t *k_enc, const uint8_t *k_tag,
-                                uint8_t dir, uint16_t fn,
-                                const uint8_t nonce[12], const uint8_t *pt,
-                                size_t pt_len);
-bool horse_crypto_take_voice_enc(uint8_t *ct, uint8_t tag[4], size_t pt_len);
+int horse_crypto_req_voice_enc(const uint8_t *k_enc, const uint8_t *k_tag,
+                               uint8_t dir, uint16_t fn,
+                               const uint8_t nonce[12], const uint8_t *pt,
+                               size_t pt_len);
+int horse_crypto_take_voice_enc(uint8_t *ct, uint8_t tag[4], size_t pt_len);
 
-bool horse_crypto_req_voice_dec(const uint8_t *k_enc, const uint8_t *k_tag,
-                                uint8_t dir, uint16_t fn,
-                                const uint8_t nonce[12], const uint8_t *ct,
-                                size_t ct_len, const uint8_t tag[4]);
-bool horse_crypto_take_voice_dec(uint8_t *pt, size_t ct_len);
+int horse_crypto_req_voice_dec(const uint8_t *k_enc, const uint8_t *k_tag,
+                               uint8_t dir, uint16_t fn,
+                               const uint8_t nonce[12], const uint8_t *ct,
+                               size_t ct_len, const uint8_t tag[4]);
+int horse_crypto_take_voice_dec(uint8_t *pt, size_t ct_len);
 
-bool horse_crypto_req_voice_tag(const uint8_t *k_tag, uint8_t dir, uint16_t fn,
-                                const uint8_t *payload);
-bool horse_crypto_take_voice_tag(uint8_t tag[4]);
+int horse_crypto_req_voice_tag(const uint8_t *k_tag, uint8_t dir, uint16_t fn,
+                               const uint8_t *payload);
+int horse_crypto_take_voice_tag(uint8_t tag[4]);
 
-bool horse_crypto_req_voice_verify(const uint8_t *k_tag, uint8_t dir,
-                                   uint16_t fn, const uint8_t *payload,
-                                   const uint8_t tag[4]);
+int horse_crypto_req_voice_verify(const uint8_t *k_tag, uint8_t dir,
+                                  uint16_t fn, const uint8_t *payload,
+                                  const uint8_t tag[4]);
 
-bool horse_crypto_req_argon2(const char *pass, size_t pass_len,
-                             const uint8_t *salt, size_t salt_len);
-bool horse_crypto_take_argon2(uint8_t key[32]);
+int horse_crypto_req_argon2(const char *pass, size_t pass_len,
+                            const uint8_t *salt, size_t salt_len);
+int horse_crypto_take_argon2(uint8_t key[32]);
 
 #ifdef __cplusplus
 }

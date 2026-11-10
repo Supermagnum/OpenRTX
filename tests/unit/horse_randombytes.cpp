@@ -84,8 +84,8 @@ int main(void)
     horse_randombytes_test_feed(words, 1);
     memset(pk, 0xff, sizeof pk);
     memset(sk, 0xff, sizeof sk);
-    if (horse_crypto_x25519_keypair(pk, sk) || !horse_randombytes_failed()
-        || horse_crypto_available()) {
+    if ((horse_crypto_x25519_keypair(pk, sk) == 0)
+        || !horse_randombytes_failed() || horse_crypto_available()) {
         std::printf("horse_randombytes_test: keygen did not fail closed\n");
         return -1;
     }

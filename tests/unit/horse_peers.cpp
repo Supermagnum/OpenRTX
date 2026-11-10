@@ -79,7 +79,8 @@ int main()
     peer.address[0] = 0x11;
     memset(peer.x25519_pk, 0x22, sizeof peer.x25519_pk);
     memset(peer.ed25519_pk, 0x33, sizeof peer.ed25519_pk);
-    if (!horse_peer_write(1, &peer) || !horse_peer_read(1, &round)) {
+    if ((horse_peers_write(1, &peer) != 0)
+        || (horse_peers_read(1, &round) != 0)) {
         std::printf("horse_peers_test: peer rw failed\n");
         return -1;
     }
@@ -87,10 +88,10 @@ int main()
         std::printf("horse_peers_test: peer mismatch\n");
         return -1;
     }
-    if (!horse_peer_has_x25519(&peer) || !horse_peer_has_ed25519(&peer))
+    if (!horse_peers_has_x25519(&peer) || !horse_peers_has_ed25519(&peer))
         return -1;
-    if (horse_peer_read(0, &round)
-        || horse_peer_read(HORSE_PEER_MAX + 1, &round))
+    if ((horse_peers_read(0, &round) == 0)
+        || (horse_peers_read(HORSE_PEER_MAX + 1, &round) == 0))
         return -1;
 
     std::printf("horse_peers_test: passed\n");

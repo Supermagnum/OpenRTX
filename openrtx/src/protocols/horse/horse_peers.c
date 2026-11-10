@@ -5,6 +5,7 @@
  */
 
 #include "protocols/horse/horse_peers.h"
+#include <errno.h>
 #include <string.h>
 
 #ifdef PLATFORM_LINUX
@@ -80,10 +81,10 @@ static int horse_peers_ensure_file(const char *path)
 }
 #endif
 
-bool horse_peer_read(uint16_t index, struct horse_peer *out)
+int horse_peers_read(uint16_t index, struct horse_peer *out)
 {
     if (out == NULL || index == 0 || index > HORSE_PEER_MAX)
-        return false;
+        return -EINVAL;
 
 #ifdef PLATFORM_LINUX
     char path[512];
@@ -91,33 +92,36 @@ bool horse_peer_read(uint16_t index, struct horse_peer *out)
     off_t off;
 
     if (horse_peers_path(path, sizeof path) != 0)
-        return false;
+        return -EIO;
     if (horse_peers_ensure_file(path) != 0)
-        return false;
+        return -EIO;
     fd = open(path, O_RDONLY);
     if (fd < 0)
-        return false;
+        return -EIO;
     off = (off_t)(index - 1) * (off_t)sizeof(struct horse_peer);
     if (lseek(fd, off, SEEK_SET) != off
         || read(fd, out, sizeof *out) != (ssize_t)sizeof *out) {
         close(fd);
-        return false;
+        return -EIO;
     }
     close(fd);
-    return true;
+    return 0;
 #else
-    return nvm_read(0, 0,
-                    HORSE_PEERS_NVM_OFFSET
-                        + (uint32_t)(index - 1) * sizeof(struct horse_peer),
-                    out, sizeof *out)
-        == 0;
+    {
+        int rc =
+            nvm_read(0, 0,
+                     HORSE_PEERS_NVM_OFFSET
+                         + (uint32_t)(index - 1) * sizeof(struct horse_peer),
+                     out, sizeof *out);
+        return rc == 0 ? 0 : -EIO;
+    }
 #endif
 }
 
-bool horse_peer_write(uint16_t index, const struct horse_peer *in)
+int horse_peers_write(uint16_t index, const struct horse_peer *in)
 {
     if (in == NULL || index == 0 || index > HORSE_PEER_MAX)
-        return false;
+        return -EINVAL;
 
 #ifdef PLATFORM_LINUX
     char dir[512];
@@ -133,42 +137,45 @@ bool horse_peer_write(uint16_t index, const struct horse_peer *in)
     else if (home != NULL)
         n = snprintf(dir, sizeof dir, "%s/.local/state/OpenRTX", home);
     else
-        return false;
+        return -EINVAL;
     if (n < 0 || (size_t)n >= sizeof dir)
-        return false;
+        return -EIO;
     mkdir(dir, 0700);
     if (horse_peers_path(path, sizeof path) != 0)
-        return false;
+        return -EIO;
     if (horse_peers_ensure_file(path) != 0)
-        return false;
+        return -EIO;
     fd = open(path, O_RDWR);
     if (fd < 0)
-        return false;
+        return -EIO;
     off = (off_t)(index - 1) * (off_t)sizeof(struct horse_peer);
     if (lseek(fd, off, SEEK_SET) != off
         || write(fd, in, sizeof *in) != (ssize_t)sizeof *in) {
         close(fd);
-        return false;
+        return -EIO;
     }
     close(fd);
-    return true;
+    return 0;
 #else
-    return nvm_write(0, 0,
-                     HORSE_PEERS_NVM_OFFSET
-                         + (uint32_t)(index - 1) * sizeof(struct horse_peer),
-                     in, sizeof *in)
-        == 0;
+    {
+        int rc =
+            nvm_write(0, 0,
+                      HORSE_PEERS_NVM_OFFSET
+                          + (uint32_t)(index - 1) * sizeof(struct horse_peer),
+                      in, sizeof *in);
+        return rc == 0 ? 0 : -EIO;
+    }
 #endif
 }
 
-bool horse_peer_has_x25519(const struct horse_peer *peer)
+bool horse_peers_has_x25519(const struct horse_peer *peer)
 {
     if (peer == NULL)
         return false;
     return peer_nonzero(peer->x25519_pk, sizeof peer->x25519_pk);
 }
 
-bool horse_peer_has_ed25519(const struct horse_peer *peer)
+bool horse_peers_has_ed25519(const struct horse_peer *peer)
 {
     if (peer == NULL)
         return false;

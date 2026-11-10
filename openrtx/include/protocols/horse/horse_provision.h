@@ -17,6 +17,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include <errno.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -86,7 +87,7 @@ int horse_provision_reject(void);
  * Honours OPENRTX_HORSE_PROV_SOCK, else XDG_RUNTIME_DIR, else
  * XDG_STATE_HOME/OpenRTX or ~/.local/state/OpenRTX.
  *
- * @return 0 on success, -1 on failure.
+ * @return 0 on success, -EINVAL/-ENAMETOOLONG on failure.
  */
 int horse_provision_default_sock_path(char *out, size_t out_len);
 

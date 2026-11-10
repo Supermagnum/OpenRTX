@@ -89,12 +89,12 @@ int horse_provision_default_sock_path(char *out, size_t out_len)
     int n;
 
     if (out == NULL || out_len < 16)
-        return -1;
+        return -EINVAL;
 
     env = getenv("OPENRTX_HORSE_PROV_SOCK");
     if (env != NULL && env[0] != '\0') {
         if (strlen(env) >= out_len)
-            return -1;
+            return -EINVAL;
         memcpy(out, env, strlen(env) + 1);
         return 0;
     }
@@ -103,7 +103,7 @@ int horse_provision_default_sock_path(char *out, size_t out_len)
     if (env != NULL && env[0] != '\0') {
         n = snprintf(out, out_len, "%s/openrtx_horse_prov.sock", env);
         if (n < 0 || (size_t)n >= out_len)
-            return -1;
+            return -EINVAL;
         return 0;
     }
 
@@ -111,17 +111,17 @@ int horse_provision_default_sock_path(char *out, size_t out_len)
     if (env != NULL && env[0] != '\0') {
         n = snprintf(out, out_len, "%s/OpenRTX/openrtx_horse_prov.sock", env);
         if (n < 0 || (size_t)n >= out_len)
-            return -1;
+            return -EINVAL;
         return 0;
     }
 
     home = getenv("HOME");
     if (home == NULL || home[0] == '\0')
-        return -1;
+        return -EINVAL;
     n = snprintf(out, out_len,
                  "%s/.local/state/OpenRTX/openrtx_horse_prov.sock", home);
     if (n < 0 || (size_t)n >= out_len)
-        return -1;
+        return -EINVAL;
     return 0;
 }
 
@@ -322,9 +322,9 @@ int horse_provision_confirm(void)
         return -ENOENT;
     if (!horse_keystore_has_passphrase())
         return -EACCES;
-    if (!horse_keystore_store_with_held(&pending_identity))
+    if ((horse_keystore_store_with_held(&pending_identity) != 0))
         return -EIO;
-    if (!horse_keystore_fingerprint(fp))
+    if ((horse_keystore_fingerprint(fp) != 0))
         return -EIO;
 
     prov_send(HORSE_MSG_CONFIRM, fp, (uint16_t)sizeof fp);
@@ -372,7 +372,7 @@ static void prov_handle_identity(const uint8_t *payload, uint16_t len)
         prov_send(HORSE_MSG_ERROR, "no passphrase", 13);
         return;
     }
-    if (!horse_crypto_identity_fingerprint(identity, pending_fp)) {
+    if ((horse_crypto_identity_fingerprint(identity, pending_fp) != 0)) {
         prov_send(HORSE_MSG_ERROR, "fingerprint failed", 18);
         return;
     }

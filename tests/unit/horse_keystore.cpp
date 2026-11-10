@@ -25,7 +25,7 @@ static void *copier(void *)
 {
     struct horse_identity_keys id;
     while (!stop_flag) {
-        if (horse_keystore_copy_identity(&id)) {
+        if ((horse_keystore_copy_identity(&id) == 0)) {
             if (id.version != 1)
                 torn = 1;
             if (memcmp(id.ed25519_sk + 32, id.ed25519_pk, 32) != 0)
@@ -42,7 +42,7 @@ static void *locker(void *)
         horse_keystore_lock();
         usleep(10);
         struct horse_identity_keys id;
-        if (horse_keystore_copy_identity(&id)) {
+        if ((horse_keystore_copy_identity(&id) == 0)) {
             if (id.version != 1)
                 torn = 1;
             if (memcmp(id.ed25519_sk + 32, id.ed25519_pk, 32) != 0)
@@ -70,14 +70,15 @@ int main()
     crypto_kx_keypair(id.x25519_pk, id.x25519_sk);
 
     horse_keystore_init();
-    if (horse_keystore_copy_identity(&id))
+    if ((horse_keystore_copy_identity(&id) == 0))
         return -1;
 
-    if (horse_keystore_hold_passphrase("", 0)
-        || horse_keystore_hold_passphrase("1234567", 7)
-        || horse_keystore_unlock("", 0) || horse_keystore_unlock("1234567", 7)
-        || horse_keystore_store_plaintext(&id, "", 0)
-        || horse_keystore_store_plaintext(&id, "1234567", 7)) {
+    if ((horse_keystore_hold_passphrase("", 0) == 0)
+        || (horse_keystore_hold_passphrase("1234567", 7) == 0)
+        || (horse_keystore_unlock("", 0) == 0)
+        || (horse_keystore_unlock("1234567", 7) == 0)
+        || (horse_keystore_store_plaintext(&id, "", 0) == 0)
+        || (horse_keystore_store_plaintext(&id, "1234567", 7) == 0)) {
         std::printf("horse_keystore_test: short passphrase accepted\n");
         horse_crypto_memzero(&id, sizeof id);
         return -1;
@@ -95,7 +96,7 @@ int main()
     mkdir(appdir, 0700);
     setenv("XDG_STATE_HOME", xdg, 1);
 
-    if (!horse_keystore_store_plaintext(&id, "test-pass", 9)) {
+    if ((horse_keystore_store_plaintext(&id, "test-pass", 9) != 0)) {
         std::printf("horse_keystore_test: store failed\n");
         horse_crypto_memzero(&id, sizeof id);
         return -1;
@@ -122,7 +123,7 @@ int main()
         }
     }
 
-    if (!horse_keystore_hold_passphrase("test-pass", 9)
+    if ((horse_keystore_hold_passphrase("test-pass", 9) != 0)
         || !horse_keystore_has_passphrase()) {
         std::printf("horse_keystore_test: hold passphrase failed\n");
         return -1;
@@ -130,18 +131,18 @@ int main()
     struct horse_identity_keys out;
     memset(&out, 0, sizeof out);
     horse_keystore_lock();
-    if (horse_keystore_has_passphrase() || horse_keystore_unlock_held()
-        || horse_keystore_copy_identity(&out)) {
+    if (horse_keystore_has_passphrase() || (horse_keystore_unlock_held() == 0)
+        || (horse_keystore_copy_identity(&out) == 0)) {
         std::printf("horse_keystore_test: lock did not wipe passphrase/keys\n");
         return -1;
     }
-    if (!horse_keystore_hold_passphrase("test-pass", 9)
-        || !horse_keystore_unlock_held()) {
+    if ((horse_keystore_hold_passphrase("test-pass", 9) != 0)
+        || (horse_keystore_unlock_held() != 0)) {
         std::printf("horse_keystore_test: unlock_held failed\n");
         return -1;
     }
 
-    if (!horse_keystore_copy_identity(&out)
+    if ((horse_keystore_copy_identity(&out) != 0)
         || memcmp(out.ed25519_pk, id.ed25519_pk, sizeof id.ed25519_pk) != 0) {
         std::printf("horse_keystore_test: copy mismatch\n");
         return -1;
@@ -153,7 +154,7 @@ int main()
     pthread_create(&t1, nullptr, copier, nullptr);
     pthread_create(&t2, nullptr, locker, nullptr);
     usleep(50000);
-    if (!horse_keystore_store_plaintext(&id, "test-pass", 9))
+    if ((horse_keystore_store_plaintext(&id, "test-pass", 9) != 0))
         return -1;
     usleep(50000);
     stop_flag = 1;

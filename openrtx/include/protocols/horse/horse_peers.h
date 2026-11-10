@@ -14,6 +14,7 @@
 #include "protocols/horse/horse_crypto.h"
 #include <stdint.h>
 #include <stdbool.h>
+#include <errno.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -27,10 +28,20 @@ struct horse_peer {
     uint8_t ed25519_pk[HORSE_ED25519_PUBLICKEY_BYTES];
 } __attribute__((packed));
 
-bool horse_peer_read(uint16_t index, struct horse_peer *out);
-bool horse_peer_write(uint16_t index, const struct horse_peer *in);
-bool horse_peer_has_x25519(const struct horse_peer *peer);
-bool horse_peer_has_ed25519(const struct horse_peer *peer);
+/**
+ * Read peer slot @p index (1..HORSE_PEER_MAX).
+ * @return 0 on success, -EINVAL/-ENOENT/-EIO on failure.
+ */
+int horse_peers_read(uint16_t index, struct horse_peer *out);
+/**
+ * Write peer slot @p index (1..HORSE_PEER_MAX).
+ * @return 0 on success, -EINVAL/-EIO on failure.
+ */
+int horse_peers_write(uint16_t index, const struct horse_peer *in);
+/** @return true when the X25519 public key is non-zero. */
+bool horse_peers_has_x25519(const struct horse_peer *peer);
+/** @return true when the Ed25519 public key is non-zero. */
+bool horse_peers_has_ed25519(const struct horse_peer *peer);
 
 #ifdef __cplusplus
 }

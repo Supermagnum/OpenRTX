@@ -74,9 +74,10 @@ static int count_good_voice(const std::vector<frame_t> &onair,
                 return -1;
             if (!horse_crypto_lsf_version_ok(version))
                 return -1;
-            if (!horse_crypto_derive_session_keys(rx_sk, eph, src.data(),
+            if ((horse_crypto_derive_session_keys(rx_sk, eph, src.data(),
                                                   dst.data(), eph, flags,
-                                                  version, k_enc, k_tag))
+                                                  version, k_enc, k_tag)
+                 != 0))
                 return -1;
             have_keys = true;
             have_lsf = true;
@@ -102,7 +103,7 @@ static int count_good_voice(const std::vector<frame_t> &onair,
                 uint8_t msg[HORSE_SESSION_MSG_BYTES];
                 horse_crypto_build_session_message(src.data(), dst.data(), eph,
                                                    flags, version, msg);
-                if (horse_crypto_verify(ed_pk, msg, sizeof msg, sig))
+                if ((horse_crypto_verify(ed_pk, msg, sizeof msg, sig) == 0))
                     sig_ok = true;
             }
             if (!sig_ok)
@@ -114,12 +115,14 @@ static int count_good_voice(const std::vector<frame_t> &onair,
         horse_crypto_voice_nonce_from_fn(fn, nonce);
         bool ok;
         if (want_enc)
-            ok = horse_crypto_voice_decrypt(k_enc, k_tag,
-                                            HORSE_VOICE_DIR_FORWARD, fn, nonce,
-                                            payload, 12, tag, plain);
+            ok = (horse_crypto_voice_decrypt(k_enc, k_tag,
+                                             HORSE_VOICE_DIR_FORWARD, fn, nonce,
+                                             payload, 12, tag, plain)
+                  == 0);
         else
-            ok = horse_crypto_voice_auth_verify(k_tag, HORSE_VOICE_DIR_FORWARD,
-                                                fn, payload, tag);
+            ok = (horse_crypto_voice_auth_verify(k_tag, HORSE_VOICE_DIR_FORWARD,
+                                                 fn, payload, tag)
+                  == 0);
         if (!ok)
             continue;
         if (!voice_fn_newer(have_fn, last_fn, fn))
@@ -158,15 +161,16 @@ static int run_mode(bool enc, bool sign, mut_t mut)
         flags |= LSF_FLAG_SIGNED;
     if (crypto_sign_ed25519_keypair(ed_pk, ed_sk) != 0)
         return -1;
-    if (!horse_crypto_x25519_keypair(bob_pk, bob_sk)
-        || !horse_crypto_x25519_keypair(eph_pk, eph_sk))
+    if ((horse_crypto_x25519_keypair(bob_pk, bob_sk) != 0)
+        || (horse_crypto_x25519_keypair(eph_pk, eph_sk) != 0))
         return -1;
     uint8_t tx_flags = flags;
     if (mut == mut_t::FLAGS)
         tx_flags ^= LSF_FLAG_ENCRYPTED;
-    if (!horse_crypto_derive_session_keys(eph_sk, bob_pk, src.data(),
+    if ((horse_crypto_derive_session_keys(eph_sk, bob_pk, src.data(),
                                           dst.data(), eph_pk, flags,
-                                          HORSE_LSF_VERSION, k_enc, k_tag))
+                                          HORSE_LSF_VERSION, k_enc, k_tag)
+         != 0))
         return -1;
 
     HorseFrameEncoder encf;
@@ -190,7 +194,7 @@ static int run_mode(bool enc, bool sign, mut_t mut)
         uint8_t msg[HORSE_SESSION_MSG_BYTES];
         horse_crypto_build_session_message(src.data(), dst.data(), eph_pk,
                                            tx_flags, HORSE_LSF_VERSION, msg);
-        if (!horse_crypto_sign(ed_sk, msg, sizeof msg, signature))
+        if ((horse_crypto_sign(ed_sk, msg, sizeof msg, signature) != 0))
             return -1;
         encf.setSignatureFragments(signature);
         unsigned nchunk = (mut == mut_t::SHORT_SIG) ? 3u : SIG_FRAME_COUNT;
@@ -256,7 +260,7 @@ static int run_mode(bool enc, bool sign, mut_t mut)
     memcpy(rx_sk, bob_sk, 32);
     if (mut == mut_t::WRONG_SK) {
         uint8_t junk_pk[32];
-        if (!horse_crypto_x25519_keypair(junk_pk, rx_sk))
+        if ((horse_crypto_x25519_keypair(junk_pk, rx_sk) != 0))
             return -1;
     }
     int n = count_good_voice(onair, rx_sk, ed_pk, enc, sign);

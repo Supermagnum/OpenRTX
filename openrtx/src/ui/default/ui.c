@@ -1556,9 +1556,9 @@ void ui_updateFSM(bool *sync_rtx)
                         {
                             size_t n = strnlen(ui_state.horse_pass_input,
                                                HORSE_PASSPHRASE_MAX);
-                            horse_keystore_hold_passphrase(
-                                ui_state.horse_pass_input, n);
-                            horse_keystore_unlock_held();
+                            if (horse_keystore_hold_passphrase(
+                                    ui_state.horse_pass_input, n) == 0)
+                                (void)horse_keystore_unlock_held();
                             horse_crypto_memzero(ui_state.horse_pass_input,
                                                  sizeof ui_state.horse_pass_input);
                             ui_state.horse_pass_edit = false;

@@ -12,6 +12,7 @@
  */
 
 #include "protocols/horse/horse_crypto.h"
+#include <errno.h>
 #include "protocols/horse/horse_heap.h"
 #include <string.h>
 
@@ -109,13 +110,12 @@ void horse_crypto_voice_encrypt(const uint8_t *k_enc, const uint8_t *k_tag,
 #endif
 }
 
-bool horse_crypto_voice_decrypt(const uint8_t *k_enc, const uint8_t *k_tag,
-                                uint8_t dir, uint16_t frame_num,
-                                const uint8_t *nonce_96bit,
-                                const uint8_t *ciphertext,
-                                size_t ciphertext_len,
-                                const uint8_t *tag_truncated_32bit,
-                                uint8_t *plaintext_out)
+int horse_crypto_voice_decrypt(const uint8_t *k_enc, const uint8_t *k_tag,
+                               uint8_t dir, uint16_t frame_num,
+                               const uint8_t *nonce_96bit,
+                               const uint8_t *ciphertext, size_t ciphertext_len,
+                               const uint8_t *tag_truncated_32bit,
+                               uint8_t *plaintext_out)
 {
 #ifdef HAVE_LIBSODIUM
     static uint8_t expected[HORSE_VOICE_TAG_BYTES];
@@ -123,25 +123,25 @@ bool horse_crypto_voice_decrypt(const uint8_t *k_enc, const uint8_t *k_tag,
 
     if (k_enc == NULL || k_tag == NULL || ciphertext == NULL
         || plaintext_out == NULL || tag_truncated_32bit == NULL)
-        return false;
+        return -EINVAL;
 
     if (horse_sodium_init() != 0)
-        return false;
+        return -EINVAL;
 
     if (!horse_crypto_tag_dir_fn_payload(k_tag, dir, frame_num, ciphertext,
                                          ciphertext_len, expected))
-        return false;
+        return -EINVAL;
 
     if (sodium_memcmp(expected, tag_truncated_32bit, HORSE_VOICE_TAG_BYTES)
         != 0)
-        return false;
+        return -EBADMSG;
 
     crypto_generichash(nonce, sizeof nonce, nonce_96bit, 12,
                        (const unsigned char *)"HORSEV1", 7);
 
     crypto_stream_xchacha20_xor(plaintext_out, ciphertext, ciphertext_len,
                                 nonce, k_enc);
-    return true;
+    return 0;
 #else
     (void)k_enc;
     (void)k_tag;
@@ -152,20 +152,20 @@ bool horse_crypto_voice_decrypt(const uint8_t *k_enc, const uint8_t *k_tag,
     (void)ciphertext_len;
     (void)tag_truncated_32bit;
     (void)plaintext_out;
-    return false;
+    return -ENOTSUP;
 #endif
 }
 
-bool horse_crypto_argon2id_derive(const char *passphrase, size_t passphrase_len,
-                                  const uint8_t *salt, size_t salt_len,
-                                  uint8_t *key_out, size_t key_len)
+int horse_crypto_argon2id_derive(const char *passphrase, size_t passphrase_len,
+                                 const uint8_t *salt, size_t salt_len,
+                                 uint8_t *key_out, size_t key_len)
 {
     if (passphrase == NULL || salt == NULL || key_out == NULL || key_len == 0)
-        return false;
+        return -EINVAL;
 
 #ifdef HAVE_LIBSODIUM
     if (horse_sodium_init() != 0)
-        return false;
+        return -EINVAL;
 
     /* Use libsodium's Argon2id implementation via crypto_pwhash.
      * Note: crypto_pwhash expects salt to be crypto_pwhash_SALTBYTES (16 bytes);
@@ -179,14 +179,14 @@ bool horse_crypto_argon2id_derive(const char *passphrase, size_t passphrase_len,
                       crypto_pwhash_ALG_ARGON2ID13)
         != 0) {
         horse_heap_release(HORSE_ARGON2ID_MEMLIMIT);
-        return false;
+        return -EIO;
     }
     horse_heap_release(HORSE_ARGON2ID_MEMLIMIT);
-    return true;
+    return 0;
 #else
     (void)passphrase_len;
     (void)salt_len;
-    return false;
+    return -EINVAL;
 #endif
 }
 
@@ -199,51 +199,53 @@ bool horse_crypto_available(void)
 #endif
 }
 
-bool horse_crypto_x25519_keypair(uint8_t *pk_out, uint8_t *sk_out)
+int horse_crypto_x25519_keypair(uint8_t *pk_out, uint8_t *sk_out)
 {
     if (pk_out == NULL || sk_out == NULL)
-        return false;
+        return -EINVAL;
 
 #ifdef HAVE_LIBSODIUM
     if (horse_sodium_init() != 0) {
         horse_crypto_memzero(pk_out, 32);
         horse_crypto_memzero(sk_out, 32);
-        return false;
+        return -ENOTSUP;
     }
 
     if (crypto_kx_keypair(pk_out, sk_out) != 0 || horse_randombytes_failed()) {
         horse_crypto_memzero(pk_out, 32);
         horse_crypto_memzero(sk_out, 32);
-        return false;
+        return -EIO;
     }
-    return true;
+    return 0;
 #else
     (void)pk_out;
     (void)sk_out;
-    return false;
+    return -ENOTSUP;
 #endif
 }
 
-bool horse_crypto_derive_session_keys(
-    const uint8_t *local_x25519_sk, const uint8_t *remote_x25519_pk,
-    const uint8_t src[6], const uint8_t dst[6], const uint8_t eph_pk[32],
-    uint8_t flags, uint8_t version, uint8_t k_enc_out[HORSE_SESSION_KEY_BYTES],
-    uint8_t k_tag_out[HORSE_SESSION_KEY_BYTES])
+int horse_crypto_derive_session_keys(const uint8_t *local_x25519_sk,
+                                     const uint8_t *remote_x25519_pk,
+                                     const uint8_t src[6], const uint8_t dst[6],
+                                     const uint8_t eph_pk[32], uint8_t flags,
+                                     uint8_t version,
+                                     uint8_t k_enc_out[HORSE_SESSION_KEY_BYTES],
+                                     uint8_t k_tag_out[HORSE_SESSION_KEY_BYTES])
 {
     if (local_x25519_sk == NULL || remote_x25519_pk == NULL || src == NULL
         || dst == NULL || eph_pk == NULL || k_enc_out == NULL
         || k_tag_out == NULL)
-        return false;
+        return -EINVAL;
 
 #ifdef HAVE_LIBSODIUM
     static unsigned char shared[crypto_scalarmult_BYTES];
     static unsigned char ikm[crypto_scalarmult_BYTES + 6 + 6 + 32 + 2];
 
     if (horse_sodium_init() != 0)
-        return false;
+        return -ENOTSUP;
 
     if (crypto_scalarmult(shared, local_x25519_sk, remote_x25519_pk) != 0)
-        return false;
+        return -EIO;
 
     memcpy(ikm, shared, sizeof shared);
     memcpy(ikm + sizeof shared, src, 6);
@@ -258,7 +260,7 @@ bool horse_crypto_derive_session_keys(
                        (const unsigned char *)"HORSE-KTAG", 10);
     sodium_memzero(shared, sizeof shared);
     sodium_memzero(ikm, sizeof ikm);
-    return true;
+    return 0;
 #else
     (void)local_x25519_sk;
     (void)remote_x25519_pk;
@@ -267,7 +269,7 @@ bool horse_crypto_derive_session_keys(
     (void)eph_pk;
     (void)flags;
     (void)version;
-    return false;
+    return -EIO;
 #endif
 }
 
@@ -287,14 +289,14 @@ void horse_crypto_voice_nonce_from_fn(uint16_t frame_num,
     nonce_96bit[11] = (uint8_t)(frame_num & 0xFF);
 }
 
-bool horse_crypto_encrypt_identity(const struct horse_identity_keys *identity,
-                                   const uint8_t *wrap_key, size_t wrap_key_len,
-                                   uint8_t *blob_out, size_t blob_cap,
-                                   size_t *blob_len)
+int horse_crypto_encrypt_identity(const struct horse_identity_keys *identity,
+                                  const uint8_t *wrap_key, size_t wrap_key_len,
+                                  uint8_t *blob_out, size_t blob_cap,
+                                  size_t *blob_len)
 {
     if (identity == NULL || wrap_key == NULL || blob_out == NULL
         || blob_len == NULL)
-        return false;
+        return -EINVAL;
 
 #ifdef HAVE_LIBSODIUM
     const size_t need = crypto_aead_xchacha20poly1305_ietf_NPUBBYTES
@@ -302,12 +304,12 @@ bool horse_crypto_encrypt_identity(const struct horse_identity_keys *identity,
                       + sizeof(struct horse_identity_keys);
 
     if (blob_cap < need)
-        return false;
+        return -ENOMEM;
 
     (void)wrap_key_len;
 
     if (horse_sodium_init() != 0)
-        return false;
+        return -EINVAL;
 
     unsigned char nonce[crypto_aead_xchacha20poly1305_ietf_NPUBBYTES];
     randombytes_buf(nonce, sizeof nonce);
@@ -317,35 +319,35 @@ bool horse_crypto_encrypt_identity(const struct horse_identity_keys *identity,
             blob_out + sizeof nonce, &clen, (const unsigned char *)identity,
             sizeof(struct horse_identity_keys), NULL, 0, NULL, nonce, wrap_key)
         != 0)
-        return false;
+        return -EINVAL;
 
     memcpy(blob_out, nonce, sizeof nonce);
     *blob_len = sizeof nonce + (size_t)clen;
-    return true;
+    return 0;
 #else
     (void)wrap_key_len;
     (void)blob_out;
     (void)blob_cap;
-    return false;
+    return -ENOTSUP;
 #endif
 }
 
-bool horse_crypto_decrypt_identity(const uint8_t *blob, size_t blob_len,
-                                   const uint8_t *wrap_key, size_t wrap_key_len,
-                                   struct horse_identity_keys *identity_out)
+int horse_crypto_decrypt_identity(const uint8_t *blob, size_t blob_len,
+                                  const uint8_t *wrap_key, size_t wrap_key_len,
+                                  struct horse_identity_keys *identity_out)
 {
     if (blob == NULL || wrap_key == NULL || identity_out == NULL)
-        return false;
+        return -EINVAL;
 
 #ifdef HAVE_LIBSODIUM
     if (blob_len < crypto_aead_xchacha20poly1305_ietf_NPUBBYTES
                        + crypto_aead_xchacha20poly1305_ietf_ABYTES)
-        return false;
+        return -EBADMSG;
 
     (void)wrap_key_len;
 
     if (horse_sodium_init() != 0)
-        return false;
+        return -EINVAL;
 
     const unsigned char *nonce = blob;
     const unsigned char *cipher = blob
@@ -357,28 +359,30 @@ bool horse_crypto_decrypt_identity(const uint8_t *blob, size_t blob_len,
             (unsigned char *)identity_out, &mlen, NULL, cipher, cipher_len,
             NULL, 0, nonce, wrap_key)
         != 0)
-        return false;
+        return -EBADMSG;
 
-    return mlen == sizeof(struct horse_identity_keys);
+    if (mlen != sizeof(struct horse_identity_keys))
+        return -EBADMSG;
+    return 0;
 #else
     (void)blob_len;
     (void)wrap_key_len;
     (void)identity_out;
-    return false;
+    return -ENOTSUP;
 #endif
 }
 
-bool horse_crypto_identity_fingerprint(
+int horse_crypto_identity_fingerprint(
     const struct horse_identity_keys *identity, uint8_t fp_out[32])
 {
     uint8_t pub[HORSE_ED25519_PUBLICKEY_BYTES + HORSE_X25519_PUBLICKEY_BYTES];
 
     if (identity == NULL || fp_out == NULL)
-        return false;
+        return -EINVAL;
 
 #ifdef HAVE_LIBSODIUM
     if (horse_sodium_init() != 0)
-        return false;
+        return -EINVAL;
 
     /* Public keys only: never hash secret material into CONFIRM. */
     memcpy(pub, identity->ed25519_pk, HORSE_ED25519_PUBLICKEY_BYTES);
@@ -386,11 +390,11 @@ bool horse_crypto_identity_fingerprint(
            HORSE_X25519_PUBLICKEY_BYTES);
     crypto_generichash(fp_out, 32, pub, sizeof pub,
                        (const unsigned char *)"HORSE-IDFP", 10);
-    return true;
+    return 0;
 #else
     (void)identity;
     (void)fp_out;
-    return false;
+    return -ENOTSUP;
 #endif
 }
 
@@ -413,82 +417,84 @@ void horse_crypto_build_session_message(
     message_out[45] = version;
 }
 
-bool horse_crypto_voice_auth_tag(const uint8_t k_tag[32], uint8_t dir,
-                                 uint16_t frame_num, const uint8_t *payload12,
-                                 uint8_t tag_out[4])
+int horse_crypto_voice_auth_tag(const uint8_t k_tag[32], uint8_t dir,
+                                uint16_t frame_num, const uint8_t *payload12,
+                                uint8_t tag_out[4])
 {
-    return horse_crypto_tag_dir_fn_payload(k_tag, dir, frame_num, payload12, 12,
-                                           tag_out);
+    if (!horse_crypto_tag_dir_fn_payload(k_tag, dir, frame_num, payload12, 12,
+                                         tag_out))
+        return -EIO;
+    return 0;
 }
 
-bool horse_crypto_voice_auth_verify(const uint8_t k_tag[32], uint8_t dir,
-                                    uint16_t frame_num,
-                                    const uint8_t *payload12,
-                                    const uint8_t tag[4])
+int horse_crypto_voice_auth_verify(const uint8_t k_tag[32], uint8_t dir,
+                                   uint16_t frame_num, const uint8_t *payload12,
+                                   const uint8_t tag[4])
 {
     uint8_t expected[HORSE_VOICE_TAG_BYTES];
 
     if (tag == NULL)
-        return false;
+        return -EINVAL;
     if (!horse_crypto_tag_dir_fn_payload(k_tag, dir, frame_num, payload12, 12,
                                          expected))
-        return false;
+        return -EBADMSG;
 #ifdef HAVE_LIBSODIUM
-    return sodium_memcmp(expected, tag, HORSE_VOICE_TAG_BYTES) == 0;
+    return sodium_memcmp(expected, tag, HORSE_VOICE_TAG_BYTES) == 0 ? 0 :
+                                                                      -EBADMSG;
 #else
     (void)expected;
-    return false;
+    return -ENOTSUP;
 #endif
 }
 
-bool horse_crypto_sign(const uint8_t *ed25519_secretkey, const uint8_t *message,
-                       size_t message_len, uint8_t *signature_out)
+int horse_crypto_sign(const uint8_t *ed25519_secretkey, const uint8_t *message,
+                      size_t message_len, uint8_t *signature_out)
 {
     if (ed25519_secretkey == NULL || message == NULL || signature_out == NULL)
-        return false;
+        return -EINVAL;
 
 #ifdef HAVE_LIBSODIUM
     if (horse_sodium_init() != 0)
-        return false;
+        return -EINVAL;
 
     if (crypto_sign_detached(signature_out, NULL, message, message_len,
                              ed25519_secretkey)
         != 0) {
-        return false;
+        return -EINVAL;
     }
     if (horse_randombytes_failed()) {
         horse_crypto_memzero(signature_out, 64);
-        return false;
+        return -EBADMSG;
     }
-    return true;
+    return 0;
 #else
     (void)message_len;
     (void)signature_out;
-    return false;
+    return -EINVAL;
 #endif
 }
 
-bool horse_crypto_verify(const uint8_t *ed25519_publickey,
-                         const uint8_t *message, size_t message_len,
-                         const uint8_t *signature)
+int horse_crypto_verify(const uint8_t *ed25519_publickey,
+                        const uint8_t *message, size_t message_len,
+                        const uint8_t *signature)
 {
     if (ed25519_publickey == NULL || message == NULL || signature == NULL)
-        return false;
+        return -EINVAL;
 
 #ifdef HAVE_LIBSODIUM
     if (horse_sodium_init() != 0)
-        return false;
+        return -EINVAL;
 
     if (crypto_sign_verify_detached(signature, message, message_len,
                                     ed25519_publickey)
         != 0) {
-        return false;
+        return -EBADMSG;
     }
-    return true;
+    return 0;
 #else
     (void)message_len;
     (void)signature;
-    return false;
+    return -ENOTSUP;
 #endif
 }
 
@@ -505,9 +511,9 @@ void horse_crypto_memzero(void *buf, size_t len)
 #endif
 }
 
-bool horse_tx_allowed(bool encrypt_en, bool sign_en, bool crypto_available,
-                      bool keystore_unlocked, bool have_x25519_peer,
-                      bool have_ed25519_peer)
+bool horse_crypto_tx_allowed(bool encrypt_en, bool sign_en,
+                             bool crypto_available, bool keystore_unlocked,
+                             bool have_x25519_peer, bool have_ed25519_peer)
 {
     bool want_encrypt = encrypt_en;
     bool want_sign = sign_en;
@@ -524,14 +530,14 @@ bool horse_tx_allowed(bool encrypt_en, bool sign_en, bool crypto_available,
     return true;
 }
 
-bool horse_tx_vhf_refused(uint8_t vhf_band, uint8_t uhf_band)
+bool horse_crypto_tx_vhf_refused(uint8_t vhf_band, uint8_t uhf_band)
 {
     return vhf_band != 0 && uhf_band == 0;
 }
 
-bool horse_rx_may_output_voice(bool lsf_encrypted, bool session_valid,
-                               bool lsf_signed, bool signature_ready,
-                               bool ch_encrypt, bool ch_sign)
+bool horse_crypto_rx_may_output_voice(bool lsf_encrypted, bool session_valid,
+                                      bool lsf_signed, bool signature_ready,
+                                      bool ch_encrypt, bool ch_sign)
 {
     if (!ch_encrypt && !ch_sign)
         ch_encrypt = true;

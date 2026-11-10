@@ -1008,11 +1008,12 @@ static int run_complete_attrib(float noise, unsigned seed, int ntx, int mode,
     call_t dst = { { 6, 5, 4, 3, 2, 1 } };
     if (real_crypto) {
         if (!horse_crypto_available()
-            || !horse_crypto_x25519_keypair(rx_pk, rx_sk)
-            || !horse_crypto_x25519_keypair(eph, tx_sk)
-            || !horse_crypto_derive_session_keys(
-                tx_sk, rx_pk, src.data(), dst.data(), eph, flags,
-                HORSE_LSF_VERSION, k_enc, k_tag))
+            || (horse_crypto_x25519_keypair(rx_pk, rx_sk) != 0)
+            || (horse_crypto_x25519_keypair(eph, tx_sk) != 0)
+            || (horse_crypto_derive_session_keys(
+                    tx_sk, rx_pk, src.data(), dst.data(), eph, flags,
+                    HORSE_LSF_VERSION, k_enc, k_tag)
+                != 0))
             return -1;
         horse_crypto_memzero(tx_sk, sizeof tx_sk);
         if (want_sig) {
@@ -1025,7 +1026,7 @@ static int run_complete_attrib(float noise, unsigned seed, int ntx, int mode,
             uint8_t smsg[HORSE_SESSION_MSG_BYTES];
             horse_crypto_build_session_message(src.data(), dst.data(), eph,
                                                flags, HORSE_LSF_VERSION, smsg);
-            if (!horse_crypto_sign(ed_sk, smsg, sizeof smsg, sig64))
+            if ((horse_crypto_sign(ed_sk, smsg, sizeof smsg, sig64) != 0))
                 return -1;
             horse_crypto_memzero(ed_sk, sizeof ed_sk);
         }
@@ -1171,12 +1172,15 @@ static int run_complete_attrib(float noise, unsigned seed, int ntx, int mode,
                     uint8_t nonce[12];
                     horse_crypto_voice_nonce_from_fn(fn, nonce);
                     if (enc_voice) {
-                        tag_match = horse_crypto_voice_decrypt(
-                            k_enc, k_tag, HORSE_VOICE_DIR_FORWARD, fn, nonce,
-                            mel, 12, tg, plain);
+                        tag_match = (horse_crypto_voice_decrypt(
+                                         k_enc, k_tag, HORSE_VOICE_DIR_FORWARD,
+                                         fn, nonce, mel, 12, tg, plain)
+                                     == 0);
                     } else {
-                        tag_match = horse_crypto_voice_auth_verify(
-                            k_tag, HORSE_VOICE_DIR_FORWARD, fn, mel, tg);
+                        tag_match =
+                            (horse_crypto_voice_auth_verify(
+                                 k_tag, HORSE_VOICE_DIR_FORWARD, fn, mel, tg)
+                             == 0);
                         memcpy(plain, mel, 12);
                     }
                 }

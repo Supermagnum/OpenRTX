@@ -60,8 +60,9 @@ int main(void)
     crypto_kx_keypair(id.x25519_pk, id.x25519_sk);
     randombytes_buf(salt, sizeof salt);
 
-    if (!horse_crypto_argon2id_derive(pass, strlen(pass), salt, sizeof salt,
-                                      key, sizeof key)) {
+    if ((horse_crypto_argon2id_derive(pass, strlen(pass), salt, sizeof salt,
+                                      key, sizeof key)
+         != 0)) {
         std::printf("horse_heap: argon2id_derive failed\n");
         return 1;
     }

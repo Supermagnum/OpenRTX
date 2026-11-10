@@ -5,6 +5,7 @@
  */
 
 #include "protocols/horse/horse_keystore.h"
+#include <errno.h>
 #include "protocols/horse/horse_randombytes.h"
 #include <stddef.h>
 #include <string.h>
@@ -179,9 +180,10 @@ static int horse_store_write(const struct horse_identity_store *store)
 static bool horse_derive_wrap_key(const char *passphrase, size_t passphrase_len,
                                   const uint8_t *salt, uint8_t *key_out)
 {
-    return horse_crypto_argon2id_derive(passphrase, passphrase_len, salt,
-                                        HORSE_KDF_SALT_BYTES, key_out,
-                                        HORSE_SESSION_KEY_BYTES);
+    return (horse_crypto_argon2id_derive(passphrase, passphrase_len, salt,
+                                         HORSE_KDF_SALT_BYTES, key_out,
+                                         HORSE_SESSION_KEY_BYTES)
+            == 0);
 }
 
 void horse_keystore_init(void)
@@ -208,12 +210,12 @@ bool horse_keystore_is_unlocked(void)
     return unlocked;
 }
 
-bool horse_keystore_copy_identity(struct horse_identity_keys *out)
+int horse_keystore_copy_identity(struct horse_identity_keys *out)
 {
     bool ok = false;
 
     if (out == NULL)
-        return false;
+        return -EINVAL;
 
     pthread_mutex_lock(&identity_mu);
     if (identity_unlocked) {
@@ -221,7 +223,7 @@ bool horse_keystore_copy_identity(struct horse_identity_keys *out)
         ok = true;
     }
     pthread_mutex_unlock(&identity_mu);
-    return ok;
+    return ok ? 0 : -ENOENT;
 }
 
 void horse_keystore_lock(void)
@@ -233,11 +235,11 @@ void horse_keystore_lock(void)
     pthread_mutex_unlock(&identity_mu);
 }
 
-bool horse_keystore_hold_passphrase(const char *passphrase,
-                                    size_t passphrase_len)
+int horse_keystore_hold_passphrase(const char *passphrase,
+                                   size_t passphrase_len)
 {
     if (passphrase == NULL || !horse_passphrase_ok(passphrase, passphrase_len))
-        return false;
+        return -EINVAL;
 
     pthread_mutex_lock(&identity_mu);
     horse_passphrase_wipe_locked();
@@ -246,7 +248,7 @@ bool horse_keystore_hold_passphrase(const char *passphrase,
     held_passphrase_len = passphrase_len;
     have_passphrase = true;
     pthread_mutex_unlock(&identity_mu);
-    return true;
+    return 0;
 }
 
 bool horse_keystore_has_passphrase(void)
@@ -259,7 +261,7 @@ bool horse_keystore_has_passphrase(void)
     return have;
 }
 
-bool horse_keystore_unlock_held(void)
+int horse_keystore_unlock_held(void)
 {
     char pass[HORSE_PASSPHRASE_MAX + 1];
     size_t n;
@@ -268,49 +270,51 @@ bool horse_keystore_unlock_held(void)
     pthread_mutex_lock(&identity_mu);
     if (!have_passphrase) {
         pthread_mutex_unlock(&identity_mu);
-        return false;
+        return -EINVAL;
     }
     n = held_passphrase_len;
     memcpy(pass, held_passphrase, n);
     pass[n] = '\0';
     pthread_mutex_unlock(&identity_mu);
 
-    ok = horse_keystore_unlock(pass, n);
+    ok = (horse_keystore_unlock(pass, n) == 0);
     horse_crypto_memzero(pass, sizeof pass);
-    return ok;
+    return ok ? 0 : -EPERM;
 }
 
-bool horse_keystore_unlock(const char *passphrase, size_t passphrase_len)
+int horse_keystore_unlock(const char *passphrase, size_t passphrase_len)
 {
     struct horse_identity_store store;
     uint8_t wrap_key[HORSE_SESSION_KEY_BYTES];
 
-    if (!horse_crypto_available() || passphrase == NULL
-        || !horse_passphrase_ok(passphrase, passphrase_len))
-        return false;
+    if (!horse_crypto_available())
+        return -ENOTSUP;
+    if (passphrase == NULL || !horse_passphrase_ok(passphrase, passphrase_len))
+        return -EINVAL;
 
     if (horse_store_read(&store) != 0)
-        return false;
+        return -ENOENT;
 
     if (store.magic != HORSE_STORE_MAGIC
         || store.store_version != HORSE_IDENTITY_STORE_VERSION
         || store.kdf_version != HORSE_KDF_VERSION
         || store.opslimit != HORSE_ARGON2ID_OPSLIMIT
         || store.memlimit != HORSE_ARGON2ID_MEMLIMIT)
-        return false;
+        return -EINVAL;
 
     if (store.blob_len == 0 || store.blob_len > sizeof store.blob)
-        return false;
+        return -EINVAL;
 
     if (!horse_derive_wrap_key(passphrase, passphrase_len, store.salt,
                                wrap_key))
-        return false;
+        return -EPERM;
 
     struct horse_identity_keys identity;
-    if (!horse_crypto_decrypt_identity(store.blob, store.blob_len, wrap_key,
-                                       HORSE_SESSION_KEY_BYTES, &identity)) {
+    if ((horse_crypto_decrypt_identity(store.blob, store.blob_len, wrap_key,
+                                       HORSE_SESSION_KEY_BYTES, &identity)
+         != 0)) {
         horse_crypto_memzero(wrap_key, sizeof wrap_key);
-        return false;
+        return -EINVAL;
     }
 
     horse_crypto_memzero(wrap_key, sizeof wrap_key);
@@ -320,20 +324,21 @@ bool horse_keystore_unlock(const char *passphrase, size_t passphrase_len)
     identity_unlocked = true;
     pthread_mutex_unlock(&identity_mu);
     horse_identity_wipe(&identity);
-    return true;
+    return 0;
 }
 
-bool horse_keystore_store_plaintext(const struct horse_identity_keys *identity,
-                                    const char *passphrase,
-                                    size_t passphrase_len)
+int horse_keystore_store_plaintext(const struct horse_identity_keys *identity,
+                                   const char *passphrase,
+                                   size_t passphrase_len)
 {
     struct horse_identity_store store;
     uint8_t wrap_key[HORSE_SESSION_KEY_BYTES];
     size_t blob_len = 0;
 
-    if (!horse_crypto_available() || identity == NULL
-        || !horse_passphrase_ok(passphrase, passphrase_len))
-        return false;
+    if (!horse_crypto_available())
+        return -ENOTSUP;
+    if (identity == NULL || !horse_passphrase_ok(passphrase, passphrase_len))
+        return -EINVAL;
 
     memset(&store, 0, sizeof store);
     store.magic = HORSE_STORE_MAGIC;
@@ -345,36 +350,37 @@ bool horse_keystore_store_plaintext(const struct horse_identity_keys *identity,
 #ifdef HAVE_LIBSODIUM
     randombytes_buf(store.salt, sizeof store.salt);
     if (horse_randombytes_failed())
-        return false;
+        return -ENOTSUP;
 #else
-    return false;
+    return -ENOTSUP;
 #endif
 
     if (!horse_derive_wrap_key(passphrase, passphrase_len, store.salt,
                                wrap_key))
-        return false;
+        return -EINVAL;
 
-    if (!horse_crypto_encrypt_identity(identity, wrap_key,
+    if ((horse_crypto_encrypt_identity(identity, wrap_key,
                                        HORSE_SESSION_KEY_BYTES, store.blob,
-                                       sizeof store.blob, &blob_len)) {
+                                       sizeof store.blob, &blob_len)
+         != 0)) {
         horse_crypto_memzero(wrap_key, sizeof wrap_key);
-        return false;
+        return -EINVAL;
     }
 
     horse_crypto_memzero(wrap_key, sizeof wrap_key);
     store.blob_len = (uint16_t)blob_len;
     if (horse_store_write(&store) != 0)
-        return false;
+        return -EINVAL;
 
     pthread_mutex_lock(&identity_mu);
     horse_identity_wipe(&unlocked_identity);
     unlocked_identity = *identity;
     identity_unlocked = true;
     pthread_mutex_unlock(&identity_mu);
-    return true;
+    return 0;
 }
 
-bool horse_keystore_store_with_held(const struct horse_identity_keys *identity)
+int horse_keystore_store_with_held(const struct horse_identity_keys *identity)
 {
     char pass[HORSE_PASSPHRASE_MAX + 1];
     size_t n;
@@ -383,28 +389,28 @@ bool horse_keystore_store_with_held(const struct horse_identity_keys *identity)
     pthread_mutex_lock(&identity_mu);
     if (!have_passphrase) {
         pthread_mutex_unlock(&identity_mu);
-        return false;
+        return -EINVAL;
     }
     n = held_passphrase_len;
     memcpy(pass, held_passphrase, n);
     pass[n] = '\0';
     pthread_mutex_unlock(&identity_mu);
 
-    ok = horse_keystore_store_plaintext(identity, pass, n);
+    ok = (horse_keystore_store_plaintext(identity, pass, n) == 0);
     horse_crypto_memzero(pass, sizeof pass);
-    return ok;
+    return ok ? 0 : -EIO;
 }
 
-bool horse_keystore_fingerprint(uint8_t fp_out[32])
+int horse_keystore_fingerprint(uint8_t fp_out[32])
 {
     struct horse_identity_keys id;
     bool ok;
 
     if (fp_out == NULL)
-        return false;
-    if (!horse_keystore_copy_identity(&id))
-        return false;
-    ok = horse_crypto_identity_fingerprint(&id, fp_out);
+        return -EINVAL;
+    if ((horse_keystore_copy_identity(&id) != 0))
+        return -EINVAL;
+    ok = (horse_crypto_identity_fingerprint(&id, fp_out) == 0);
     horse_identity_wipe(&id);
-    return ok;
+    return ok ? 0 : -EIO;
 }

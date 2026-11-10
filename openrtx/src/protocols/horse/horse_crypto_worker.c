@@ -5,6 +5,7 @@
  */
 
 #include "protocols/horse/horse_crypto_worker.h"
+#include <errno.h>
 #include "protocols/horse/horse_heap.h"
 #include "core/threads.h"
 #include <pthread.h>
@@ -83,20 +84,22 @@ static void run_op(void)
     job.ok = 0;
     switch (job.op) {
         case OP_KEYPAIR:
-            job.ok = horse_crypto_x25519_keypair(job.pk, job.sk);
+            job.ok = (horse_crypto_x25519_keypair(job.pk, job.sk) == 0);
             break;
         case OP_DERIVE:
-            job.ok = horse_crypto_derive_session_keys(job.sk, job.pk, job.src,
-                                                      job.dst, job.eph,
-                                                      job.flags, job.ver,
-                                                      job.kenc, job.ktag);
+            job.ok = (horse_crypto_derive_session_keys(
+                          job.sk, job.pk, job.src, job.dst, job.eph, job.flags,
+                          job.ver, job.kenc, job.ktag)
+                      == 0);
             break;
         case OP_SIGN:
-            job.ok = horse_crypto_sign(job.edsk, job.msg, job.msg_len, job.sig);
+            job.ok = (horse_crypto_sign(job.edsk, job.msg, job.msg_len, job.sig)
+                      == 0);
             break;
         case OP_VERIFY:
-            job.ok = horse_crypto_verify(job.edpk, job.msg, job.msg_len,
-                                         job.sig);
+            job.ok =
+                (horse_crypto_verify(job.edpk, job.msg, job.msg_len, job.sig)
+                 == 0);
             break;
         case OP_VENC:
             horse_crypto_voice_encrypt(job.kenc, job.ktag, job.dir, job.fn,
@@ -105,22 +108,26 @@ static void run_op(void)
             job.ok = 1;
             break;
         case OP_VDEC:
-            job.ok = horse_crypto_voice_decrypt(job.kenc, job.ktag, job.dir,
-                                                job.fn, job.nonce, job.ct,
-                                                job.pay_len, job.tag, job.pt);
+            job.ok = (horse_crypto_voice_decrypt(job.kenc, job.ktag, job.dir,
+                                                 job.fn, job.nonce, job.ct,
+                                                 job.pay_len, job.tag, job.pt)
+                      == 0);
             break;
         case OP_VTAG:
-            job.ok = horse_crypto_voice_auth_tag(job.ktag, job.dir, job.fn,
-                                                 job.pt, job.tag);
+            job.ok = (horse_crypto_voice_auth_tag(job.ktag, job.dir, job.fn,
+                                                  job.pt, job.tag)
+                      == 0);
             break;
         case OP_VVERIFY:
-            job.ok = horse_crypto_voice_auth_verify(job.ktag, job.dir, job.fn,
-                                                    job.pt, job.tag);
+            job.ok = (horse_crypto_voice_auth_verify(job.ktag, job.dir, job.fn,
+                                                     job.pt, job.tag)
+                      == 0);
             break;
         case OP_ARGON2:
-            job.ok = horse_crypto_argon2id_derive((char *)job.pass,
-                                                  job.pass_len, job.salt,
-                                                  job.salt_len, job.argon, 32);
+            job.ok = (horse_crypto_argon2id_derive((char *)job.pass,
+                                                   job.pass_len, job.salt,
+                                                   job.salt_len, job.argon, 32)
+                      == 0);
             break;
         default:
             break;
@@ -255,7 +262,7 @@ enum horse_crypto_st horse_crypto_wait(void)
     return st;
 }
 
-bool horse_crypto_req_x25519_keypair(void)
+int horse_crypto_req_x25519_keypair(void)
 {
     bool ok;
     pthread_mutex_lock(&mu);
@@ -263,10 +270,10 @@ bool horse_crypto_req_x25519_keypair(void)
     if (ok)
         launch_op();
     pthread_mutex_unlock(&mu);
-    return ok;
+    return ok ? 0 : -EBUSY;
 }
 
-bool horse_crypto_take_keypair(uint8_t pk[32], uint8_t sk[32])
+int horse_crypto_take_keypair(uint8_t pk[32], uint8_t sk[32])
 {
     bool ok = false;
     pthread_mutex_lock(&mu);
@@ -278,13 +285,13 @@ bool horse_crypto_take_keypair(uint8_t pk[32], uint8_t sk[32])
         wipe_secrets();
     }
     pthread_mutex_unlock(&mu);
-    return ok;
+    return ok ? 0 : -EAGAIN;
 }
 
-bool horse_crypto_req_derive(const uint8_t *local_sk, const uint8_t *remote_pk,
-                             const uint8_t src[6], const uint8_t dst[6],
-                             const uint8_t eph_pk[32], uint8_t flags,
-                             uint8_t version)
+int horse_crypto_req_derive(const uint8_t *local_sk, const uint8_t *remote_pk,
+                            const uint8_t src[6], const uint8_t dst[6],
+                            const uint8_t eph_pk[32], uint8_t flags,
+                            uint8_t version)
 {
     bool ok;
     pthread_mutex_lock(&mu);
@@ -300,10 +307,10 @@ bool horse_crypto_req_derive(const uint8_t *local_sk, const uint8_t *remote_pk,
         launch_op();
     }
     pthread_mutex_unlock(&mu);
-    return ok;
+    return ok ? 0 : -EBUSY;
 }
 
-bool horse_crypto_take_session(uint8_t k_enc[32], uint8_t k_tag[32])
+int horse_crypto_take_session(uint8_t k_enc[32], uint8_t k_tag[32])
 {
     bool ok = false;
     pthread_mutex_lock(&mu);
@@ -315,15 +322,15 @@ bool horse_crypto_take_session(uint8_t k_enc[32], uint8_t k_tag[32])
         wipe_secrets();
     }
     pthread_mutex_unlock(&mu);
-    return ok;
+    return ok ? 0 : -EAGAIN;
 }
 
-bool horse_crypto_req_sign(const uint8_t sk[64], const uint8_t *msg,
-                           size_t msg_len)
+int horse_crypto_req_sign(const uint8_t sk[64], const uint8_t *msg,
+                          size_t msg_len)
 {
     bool ok;
     if (msg_len > sizeof job.msg)
-        return false;
+        return -EINVAL;
     pthread_mutex_lock(&mu);
     ok = prepare_op(OP_SIGN);
     if (ok) {
@@ -333,10 +340,10 @@ bool horse_crypto_req_sign(const uint8_t sk[64], const uint8_t *msg,
         launch_op();
     }
     pthread_mutex_unlock(&mu);
-    return ok;
+    return ok ? 0 : -EBUSY;
 }
 
-bool horse_crypto_take_sig(uint8_t sig[64])
+int horse_crypto_take_sig(uint8_t sig[64])
 {
     bool ok = false;
     pthread_mutex_lock(&mu);
@@ -347,15 +354,15 @@ bool horse_crypto_take_sig(uint8_t sig[64])
         wipe_secrets();
     }
     pthread_mutex_unlock(&mu);
-    return ok;
+    return ok ? 0 : -EAGAIN;
 }
 
-bool horse_crypto_req_verify(const uint8_t pk[32], const uint8_t *msg,
-                             size_t msg_len, const uint8_t sig[64])
+int horse_crypto_req_verify(const uint8_t pk[32], const uint8_t *msg,
+                            size_t msg_len, const uint8_t sig[64])
 {
     bool ok;
     if (msg_len > sizeof job.msg)
-        return false;
+        return -EINVAL;
     pthread_mutex_lock(&mu);
     ok = prepare_op(OP_VERIFY);
     if (ok) {
@@ -366,17 +373,17 @@ bool horse_crypto_req_verify(const uint8_t pk[32], const uint8_t *msg,
         launch_op();
     }
     pthread_mutex_unlock(&mu);
-    return ok;
+    return ok ? 0 : -EBUSY;
 }
 
-bool horse_crypto_req_voice_enc(const uint8_t *k_enc, const uint8_t *k_tag,
-                                uint8_t dir, uint16_t fn,
-                                const uint8_t nonce[12], const uint8_t *pt,
-                                size_t pt_len)
+int horse_crypto_req_voice_enc(const uint8_t *k_enc, const uint8_t *k_tag,
+                               uint8_t dir, uint16_t fn,
+                               const uint8_t nonce[12], const uint8_t *pt,
+                               size_t pt_len)
 {
     bool ok;
     if (pt_len > sizeof job.pt)
-        return false;
+        return -EBUSY;
     pthread_mutex_lock(&mu);
     ok = prepare_op(OP_VENC);
     if (ok) {
@@ -390,10 +397,10 @@ bool horse_crypto_req_voice_enc(const uint8_t *k_enc, const uint8_t *k_tag,
         launch_op();
     }
     pthread_mutex_unlock(&mu);
-    return ok;
+    return ok ? 0 : -EBUSY;
 }
 
-bool horse_crypto_take_voice_enc(uint8_t *ct, uint8_t tag[4], size_t pt_len)
+int horse_crypto_take_voice_enc(uint8_t *ct, uint8_t tag[4], size_t pt_len)
 {
     bool ok = false;
     pthread_mutex_lock(&mu);
@@ -405,17 +412,17 @@ bool horse_crypto_take_voice_enc(uint8_t *ct, uint8_t tag[4], size_t pt_len)
         wipe_secrets();
     }
     pthread_mutex_unlock(&mu);
-    return ok;
+    return ok ? 0 : -EAGAIN;
 }
 
-bool horse_crypto_req_voice_dec(const uint8_t *k_enc, const uint8_t *k_tag,
-                                uint8_t dir, uint16_t fn,
-                                const uint8_t nonce[12], const uint8_t *ct,
-                                size_t ct_len, const uint8_t tag[4])
+int horse_crypto_req_voice_dec(const uint8_t *k_enc, const uint8_t *k_tag,
+                               uint8_t dir, uint16_t fn,
+                               const uint8_t nonce[12], const uint8_t *ct,
+                               size_t ct_len, const uint8_t tag[4])
 {
     bool ok;
     if (ct_len > sizeof job.ct)
-        return false;
+        return -EBUSY;
     pthread_mutex_lock(&mu);
     ok = prepare_op(OP_VDEC);
     if (ok) {
@@ -430,10 +437,10 @@ bool horse_crypto_req_voice_dec(const uint8_t *k_enc, const uint8_t *k_tag,
         launch_op();
     }
     pthread_mutex_unlock(&mu);
-    return ok;
+    return ok ? 0 : -EBUSY;
 }
 
-bool horse_crypto_take_voice_dec(uint8_t *pt, size_t ct_len)
+int horse_crypto_take_voice_dec(uint8_t *pt, size_t ct_len)
 {
     bool ok = false;
     pthread_mutex_lock(&mu);
@@ -444,11 +451,11 @@ bool horse_crypto_take_voice_dec(uint8_t *pt, size_t ct_len)
         wipe_secrets();
     }
     pthread_mutex_unlock(&mu);
-    return ok;
+    return ok ? 0 : -EAGAIN;
 }
 
-bool horse_crypto_req_voice_tag(const uint8_t *k_tag, uint8_t dir, uint16_t fn,
-                                const uint8_t *payload)
+int horse_crypto_req_voice_tag(const uint8_t *k_tag, uint8_t dir, uint16_t fn,
+                               const uint8_t *payload)
 {
     bool ok;
     pthread_mutex_lock(&mu);
@@ -461,10 +468,10 @@ bool horse_crypto_req_voice_tag(const uint8_t *k_tag, uint8_t dir, uint16_t fn,
         launch_op();
     }
     pthread_mutex_unlock(&mu);
-    return ok;
+    return ok ? 0 : -EBUSY;
 }
 
-bool horse_crypto_take_voice_tag(uint8_t tag[4])
+int horse_crypto_take_voice_tag(uint8_t tag[4])
 {
     bool ok = false;
     pthread_mutex_lock(&mu);
@@ -475,12 +482,12 @@ bool horse_crypto_take_voice_tag(uint8_t tag[4])
         wipe_secrets();
     }
     pthread_mutex_unlock(&mu);
-    return ok;
+    return ok ? 0 : -EAGAIN;
 }
 
-bool horse_crypto_req_voice_verify(const uint8_t *k_tag, uint8_t dir,
-                                   uint16_t fn, const uint8_t *payload,
-                                   const uint8_t tag[4])
+int horse_crypto_req_voice_verify(const uint8_t *k_tag, uint8_t dir,
+                                  uint16_t fn, const uint8_t *payload,
+                                  const uint8_t tag[4])
 {
     bool ok;
     pthread_mutex_lock(&mu);
@@ -494,15 +501,15 @@ bool horse_crypto_req_voice_verify(const uint8_t *k_tag, uint8_t dir,
         launch_op();
     }
     pthread_mutex_unlock(&mu);
-    return ok;
+    return ok ? 0 : -EBUSY;
 }
 
-bool horse_crypto_req_argon2(const char *pass, size_t pass_len,
-                             const uint8_t *salt, size_t salt_len)
+int horse_crypto_req_argon2(const char *pass, size_t pass_len,
+                            const uint8_t *salt, size_t salt_len)
 {
     bool ok;
     if (pass_len > sizeof job.pass || salt_len > sizeof job.salt)
-        return false;
+        return -EBUSY;
     pthread_mutex_lock(&mu);
     ok = prepare_op(OP_ARGON2);
     if (ok) {
@@ -513,10 +520,10 @@ bool horse_crypto_req_argon2(const char *pass, size_t pass_len,
         launch_op();
     }
     pthread_mutex_unlock(&mu);
-    return ok;
+    return ok ? 0 : -EBUSY;
 }
 
-bool horse_crypto_take_argon2(uint8_t key[32])
+int horse_crypto_take_argon2(uint8_t key[32])
 {
     bool ok = false;
     pthread_mutex_lock(&mu);
@@ -527,5 +534,5 @@ bool horse_crypto_take_argon2(uint8_t key[32])
         wipe_secrets();
     }
     pthread_mutex_unlock(&mu);
-    return ok;
+    return ok ? 0 : -EAGAIN;
 }

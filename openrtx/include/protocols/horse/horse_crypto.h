@@ -11,7 +11,7 @@
  *  - Ed25519 for digital signatures
  *  - Argon2id (via crypto_pwhash) for passphrase-based key derivation
  *
- * Without libsodium every primitive returns false. There is no PBKDF2,
+ * Without libsodium every primitive returns -ENOTSUP. There is no PBKDF2,
  * cleartext, or stub-crypto fallback.
  */
 
@@ -21,6 +21,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <stdbool.h>
+#include <errno.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -82,33 +83,36 @@ void horse_crypto_voice_encrypt(const uint8_t *k_enc, const uint8_t *k_tag,
                                 uint8_t *ciphertext_out,
                                 uint8_t *tag_truncated_32bit);
 
-/* Voice frame decrypt with constant-time tag check. Missing/wrong tag fails. */
-bool horse_crypto_voice_decrypt(const uint8_t *k_enc, const uint8_t *k_tag,
-                                uint8_t dir, uint16_t frame_num,
-                                const uint8_t *nonce_96bit,
-                                const uint8_t *ciphertext,
-                                size_t ciphertext_len,
-                                const uint8_t *tag_truncated_32bit,
-                                uint8_t *plaintext_out);
+/**
+ * Decrypt a voice frame with a constant-time tag check.
+ *
+ * @return 0 on success, -EINVAL/-ENOTSUP/-EBADMSG on failure.
+ */
+int horse_crypto_voice_decrypt(const uint8_t *k_enc, const uint8_t *k_tag,
+                               uint8_t dir, uint16_t frame_num,
+                               const uint8_t *nonce_96bit,
+                               const uint8_t *ciphertext, size_t ciphertext_len,
+                               const uint8_t *tag_truncated_32bit,
+                               uint8_t *plaintext_out);
 
 /* Derive key from passphrase (Argon2id via libsodium). Uses
  * HORSE_ARGON2ID_OPSLIMIT / HORSE_ARGON2ID_MEMLIMIT. No PBKDF2 path. */
-bool horse_crypto_argon2id_derive(const char *passphrase, size_t passphrase_len,
-                                  const uint8_t *salt, size_t salt_len,
-                                  uint8_t *key_out, size_t key_len);
+int horse_crypto_argon2id_derive(const char *passphrase, size_t passphrase_len,
+                                 const uint8_t *salt, size_t salt_len,
+                                 uint8_t *key_out, size_t key_len);
 
 /* True when a real crypto backend (libsodium) is linked in. */
 bool horse_crypto_available(void);
 
 /* Generate an X25519 keypair (public, secret). */
-bool horse_crypto_x25519_keypair(uint8_t *pk_out, uint8_t *sk_out);
+int horse_crypto_x25519_keypair(uint8_t *pk_out, uint8_t *sk_out);
 
 /*
  * ECDH(local_sk, remote_pk) then KDF over shared || src || dst || eph_pk
  * || flags || version to k_enc and k_tag. Any LSF field change in transit
  * changes the keys, so every voice tag fails.
  */
-bool horse_crypto_derive_session_keys(
+int horse_crypto_derive_session_keys(
     const uint8_t *local_x25519_sk, const uint8_t *remote_x25519_pk,
     const uint8_t src[6], const uint8_t dst[6], const uint8_t eph_pk[32],
     uint8_t flags, uint8_t version, uint8_t k_enc_out[HORSE_SESSION_KEY_BYTES],
@@ -122,16 +126,16 @@ void horse_crypto_voice_nonce_from_fn(uint16_t frame_num,
                                       uint8_t nonce_96bit[12]);
 
 /* Encrypt/decrypt a struct horse_identity_keys blob with a derived wrap key. */
-bool horse_crypto_encrypt_identity(const struct horse_identity_keys *identity,
-                                   const uint8_t *wrap_key, size_t wrap_key_len,
-                                   uint8_t *blob_out, size_t blob_cap,
-                                   size_t *blob_len);
+int horse_crypto_encrypt_identity(const struct horse_identity_keys *identity,
+                                  const uint8_t *wrap_key, size_t wrap_key_len,
+                                  uint8_t *blob_out, size_t blob_cap,
+                                  size_t *blob_len);
 
-bool horse_crypto_decrypt_identity(const uint8_t *blob, size_t blob_len,
-                                   const uint8_t *wrap_key, size_t wrap_key_len,
-                                   struct horse_identity_keys *identity_out);
+int horse_crypto_decrypt_identity(const uint8_t *blob, size_t blob_len,
+                                  const uint8_t *wrap_key, size_t wrap_key_len,
+                                  struct horse_identity_keys *identity_out);
 
-bool horse_crypto_identity_fingerprint(
+int horse_crypto_identity_fingerprint(
     const struct horse_identity_keys *identity, uint8_t fp_out[32]);
 
 /* Build src||dst||eph_pk||flags||version (HORSE_SESSION_MSG_BYTES). */
@@ -141,14 +145,13 @@ void horse_crypto_build_session_message(
     uint8_t message_out[HORSE_SESSION_MSG_BYTES]);
 
 /* 32-bit tag over dir || FN (no last-frame bit) || 12-byte payload. */
-bool horse_crypto_voice_auth_tag(const uint8_t k_tag[32], uint8_t dir,
-                                 uint16_t frame_num, const uint8_t *payload12,
-                                 uint8_t tag_out[4]);
+int horse_crypto_voice_auth_tag(const uint8_t k_tag[32], uint8_t dir,
+                                uint16_t frame_num, const uint8_t *payload12,
+                                uint8_t tag_out[4]);
 
-bool horse_crypto_voice_auth_verify(const uint8_t k_tag[32], uint8_t dir,
-                                    uint16_t frame_num,
-                                    const uint8_t *payload12,
-                                    const uint8_t tag[4]);
+int horse_crypto_voice_auth_verify(const uint8_t k_tag[32], uint8_t dir,
+                                   uint16_t frame_num, const uint8_t *payload12,
+                                   const uint8_t tag[4]);
 
 /* Sign data with Ed25519 (without encryption).
  * Input:
@@ -157,10 +160,10 @@ bool horse_crypto_voice_auth_verify(const uint8_t k_tag[32], uint8_t dir,
  *  - message_len: length of message
  * Output:
  *  - signature_out[64]: Ed25519 signature
- * Returns true on success, false on failure.
+ * @return 0 on success, negative errno on failure.
  */
-bool horse_crypto_sign(const uint8_t *ed25519_secretkey, const uint8_t *message,
-                       size_t message_len, uint8_t *signature_out);
+int horse_crypto_sign(const uint8_t *ed25519_secretkey, const uint8_t *message,
+                      size_t message_len, uint8_t *signature_out);
 
 /* Verify Ed25519 signature (without decryption).
  * Input:
@@ -168,11 +171,11 @@ bool horse_crypto_sign(const uint8_t *ed25519_secretkey, const uint8_t *message,
  *  - message: signed data
  *  - message_len: length of message
  *  - signature[64]: Ed25519 signature to verify
- * Returns true if signature is valid, false otherwise.
+ * @return 0 if valid, -EBADMSG if invalid, -ENOTSUP/-EINVAL otherwise.
  */
-bool horse_crypto_verify(const uint8_t *ed25519_publickey,
-                         const uint8_t *message, size_t message_len,
-                         const uint8_t *signature);
+int horse_crypto_verify(const uint8_t *ed25519_publickey,
+                        const uint8_t *message, size_t message_len,
+                        const uint8_t *signature);
 
 void horse_crypto_memzero(void *buf, size_t len);
 
@@ -181,9 +184,9 @@ void horse_crypto_memzero(void *buf, size_t len);
  * and the peer keys required by the selected mode exist. Both flags clear
  * still means encrypt (legacy default) and therefore still requires crypto.
  */
-bool horse_tx_allowed(bool encrypt_en, bool sign_en, bool crypto_available,
-                      bool keystore_unlocked, bool have_x25519_peer,
-                      bool have_ed25519_peer);
+bool horse_crypto_tx_allowed(bool encrypt_en, bool sign_en,
+                             bool crypto_available, bool keystore_unlocked,
+                             bool have_x25519_peer, bool have_ed25519_peer);
 
 /*
  * Upstream marks M17 TX unsupported on VHF-only MD-380/390/RT3. Horse
@@ -191,7 +194,7 @@ bool horse_tx_allowed(bool encrypt_en, bool sign_en, bool crypto_available,
  * UHF-capable. Dual-band (including the Linux emulator) is allowed.
  * Untested on hardware.
  */
-bool horse_tx_vhf_refused(uint8_t vhf_band, uint8_t uhf_band);
+bool horse_crypto_tx_vhf_refused(uint8_t vhf_band, uint8_t uhf_band);
 
 /*
  * Voice audio requires a valid ECDH session (k_tag) in every mode.
@@ -199,9 +202,9 @@ bool horse_tx_vhf_refused(uint8_t vhf_band, uint8_t uhf_band);
  * Channel encrypt_en/sign_en must match the LSF flags (legacy both-clear
  * still means encrypt).
  */
-bool horse_rx_may_output_voice(bool lsf_encrypted, bool session_valid,
-                               bool lsf_signed, bool signature_ready,
-                               bool ch_encrypt, bool ch_sign);
+bool horse_crypto_rx_may_output_voice(bool lsf_encrypted, bool session_valid,
+                                      bool lsf_signed, bool signature_ready,
+                                      bool ch_encrypt, bool ch_sign);
 
 #ifdef __cplusplus
 }

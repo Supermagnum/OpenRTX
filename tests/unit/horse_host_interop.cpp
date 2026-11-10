@@ -124,11 +124,11 @@ int main()
     }
 
     horse_keystore_init();
-    if (horse_keystore_unlock("wrong-pass", 10)) {
+    if ((horse_keystore_unlock("wrong-pass", 10) == 0)) {
         std::printf("horse_host_interop: wrong passphrase accepted\n");
         return -1;
     }
-    if (!horse_keystore_unlock(pass, strlen(pass))) {
+    if ((horse_keystore_unlock(pass, strlen(pass)) != 0)) {
         std::printf("horse_host_interop: correct passphrase rejected\n");
         return -1;
     }
@@ -138,7 +138,7 @@ int main()
     uint8_t ed_pk[32], x_pk[32];
     if (parse_hex(ed_hex, ed_pk, 32) != 0 || parse_hex(x_hex, x_pk, 32) != 0)
         return -1;
-    if (!horse_keystore_copy_identity(&id)
+    if ((horse_keystore_copy_identity(&id) != 0)
         || memcmp(id.ed25519_pk, ed_pk, 32) != 0
         || memcmp(id.x25519_pk, x_pk, 32) != 0) {
         std::printf("horse_host_interop: C identity mismatch\n");
@@ -146,7 +146,7 @@ int main()
     }
 
     uint8_t fp[32];
-    if (!horse_keystore_fingerprint(fp)) {
+    if ((horse_keystore_fingerprint(fp) != 0)) {
         std::printf("horse_host_interop: fingerprint failed\n");
         return -1;
     }
@@ -164,7 +164,7 @@ int main()
     struct horse_peer peer;
     memset(&peer, 0, sizeof peer);
     uint8_t addr[6] = { 1, 2, 3, 4, 5, 6 };
-    if (!horse_peer_read(3, &peer) || memcmp(peer.address, addr, 6) != 0
+    if ((horse_peers_read(3, &peer) != 0) || memcmp(peer.address, addr, 6) != 0
         || memcmp(peer.ed25519_pk, ed_pk, 32) != 0
         || memcmp(peer.x25519_pk, x_pk, 32) != 0) {
         std::printf("horse_host_interop: C peer table mismatch\n");
@@ -230,7 +230,7 @@ int main()
                 cmd = "cp \"" + src2 + "\" \"" + dst + "\"";
                 run_cmd(cmd, unused);
                 horse_keystore_init();
-                if (!horse_keystore_unlock(pass, strlen(pass))) {
+                if ((horse_keystore_unlock(pass, strlen(pass)) != 0)) {
                     std::printf(
                         "horse_host_interop: OpenPGP identity unlock failed\n");
                     return -1;

@@ -43,8 +43,9 @@ static int test_worker_dead_enc_fails(void)
     memset(n, 2, sizeof n);
     memset(pt, 3, sizeof pt);
     horse_crypto_worker_terminate();
-    if (horse_crypto_req_voice_enc(k, k, HORSE_VOICE_DIR_FORWARD, 1, n, pt,
-                                   sizeof pt)) {
+    if ((horse_crypto_req_voice_enc(k, k, HORSE_VOICE_DIR_FORWARD, 1, n, pt,
+                                    sizeof pt)
+         == 0)) {
         std::printf("horse_tx_fail: enc succeeded without worker\n");
         return -1;
     }
@@ -75,19 +76,19 @@ int main(void)
         return -6;
     }
     /* VHF-only MD-3x0: refuse TX. Dual-band / UHF-only: allow. */
-    if (!horse_tx_vhf_refused(1, 0)) {
+    if (!horse_crypto_tx_vhf_refused(1, 0)) {
         std::printf("horse_tx_fail: VHF-only must refuse TX\n");
         return -7;
     }
-    if (horse_tx_vhf_refused(0, 1)) {
+    if (horse_crypto_tx_vhf_refused(0, 1)) {
         std::printf("horse_tx_fail: UHF-only must allow TX\n");
         return -8;
     }
-    if (horse_tx_vhf_refused(1, 1)) {
+    if (horse_crypto_tx_vhf_refused(1, 1)) {
         std::printf("horse_tx_fail: dual-band must allow TX\n");
         return -9;
     }
-    if (horse_tx_vhf_refused(0, 0)) {
+    if (horse_crypto_tx_vhf_refused(0, 0)) {
         std::printf("horse_tx_fail: no-band must allow TX\n");
         return -10;
     }
