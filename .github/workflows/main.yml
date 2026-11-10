@@ -260,3 +260,45 @@ jobs:
           name: openrtx-${{ matrix.radio }}
           path: firmware/openrtx_${{ matrix.radio }}_*
           if-no-files-found: error
+
+  # Non-Horse flash images must stay byte-identical to upstream/master when
+  # built with the same -Dgit_version (Horse stays behind CONFIG_HORSE).
+  byte-identical:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Compile fork and upstream master, compare
+        uses: devcontainers/ci@v0.3
+        with:
+          cacheFrom: ${{ env.DEVCONTAINER_NAME }}
+          push: never
+          runCmd: |
+            set -euo pipefail
+            GV=ci-byte-identical
+            PIN="$PWD/scripts/pin_git_version.py"
+            git clone --recurse-submodules --branch master --depth 1 \
+              https://github.com/OpenRTX/OpenRTX.git /tmp/openrtx-upstream
+            meson setup --cross-file cross_cm4.txt build_cm4_fork -Dgit_version="$GV"
+            meson compile -C build_cm4_fork openrtx_mduv3x0 openrtx_gd77 openrtx_md3x0
+            arm-miosix-eabi-objcopy -O binary build_cm4_fork/openrtx_mduv3x0 /tmp/fork_mduv3x0.bin
+            arm-miosix-eabi-objcopy -O binary build_cm4_fork/openrtx_gd77 /tmp/fork_gd77.bin
+            arm-miosix-eabi-size build_cm4_fork/openrtx_md3x0 | tee /tmp/md3x0_size.txt
+            (
+              cd /tmp/openrtx-upstream
+              # upstream/master has no -Dgit_version; pin GIT_VERSION the same way.
+              python3 "$PIN" "$GV" meson.build
+              meson setup --cross-file cross_cm4.txt build_cm4
+              meson compile -C build_cm4 openrtx_mduv3x0 openrtx_gd77
+              arm-miosix-eabi-objcopy -O binary build_cm4/openrtx_mduv3x0 /tmp/up_mduv3x0.bin
+              arm-miosix-eabi-objcopy -O binary build_cm4/openrtx_gd77 /tmp/up_gd77.bin
+            )
+            cmp -s /tmp/fork_mduv3x0.bin /tmp/up_mduv3x0.bin
+            cmp -s /tmp/fork_gd77.bin /tmp/up_gd77.bin
+            echo "## Byte-identical (mduv3x0, gd77)" >> "$GITHUB_STEP_SUMMARY"
+            echo "Compared this branch vs OpenRTX/OpenRTX@master with -Dgit_version=$GV: OK" >> "$GITHUB_STEP_SUMMARY"
+            echo "## openrtx_md3x0 size (this branch)" >> "$GITHUB_STEP_SUMMARY"
+            cat /tmp/md3x0_size.txt >> "$GITHUB_STEP_SUMMARY"

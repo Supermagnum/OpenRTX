@@ -210,11 +210,16 @@ subdir('lib/miosix-kernel')
 ##
 ## Current git commit or tag
 ##
-r = run_command('git', 'describe', '--tags', '--dirty', '--always')
-if r.returncode() != 0
-  # it failed
+git_version_opt = get_option('git_version')
+if git_version_opt != ''
+  git_version = '"' + git_version_opt + '"'
+else
+  r = run_command('git', 'describe', '--tags', '--dirty', '--always')
+  if r.returncode() != 0
+    # it failed
+  endif
+  git_version = '"' + r.stdout().strip() + '"'
 endif
-git_version  = '"'+r.stdout().strip()+'"'
 openrtx_def += {'GIT_VERSION': git_version}
 
 ##
