@@ -505,9 +505,9 @@ md3x0_src = ['platform/drivers/CPS/cps_io_native_MD3x0.c',
              'platform/targets/MD-3x0/hwconfig.c']
 
 md3x0_inc = ['platform/targets/MD-3x0']
-md3x0_def = {'PLATFORM_MD3x0': '', 'timegm': 'mktime'}
+md3x0_def = {'PLATFORM_MD3x0': '', 'CONFIG_HORSE': '', 'timegm': 'mktime'}
 
-md3x0_src += openrtx_src + stm32f405_src + ui_src_default + mdx_src
+md3x0_src += openrtx_src + horse_src + stm32f405_src + ui_src_default + mdx_src
 md3x0_inc += openrtx_inc + stm32f405_inc
 md3x0_def += openrtx_def + stm32f405_def
 
@@ -870,9 +870,9 @@ linux_mod17_opts = {
 md3x0_opts = {
   'sources'            : md3x0_src,
   'include_directories': md3x0_inc,
-  'dependencies'       : [codec2_dep],
-  'c_args'             : md3x0_args,
-  'cpp_args'           : md3x0_args,
+  'dependencies'       : [codec2_dep] + horse_deps + horse_cm4_sodium_dep,
+  'c_args'             : md3x0_args + horse_crypto_args,
+  'cpp_args'           : md3x0_args + horse_crypto_args,
   'link_args'          : ['-Wl,-T../platform/mcu/STM32F4xx/linker_script_MDx.ld']
 }
 
