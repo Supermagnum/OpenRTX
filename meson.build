@@ -74,7 +74,8 @@ horse_src = ['openrtx/src/protocols/horse/HorseFrameEncoder.cpp',
              'openrtx/src/protocols/horse/HorseVoiceCodec.cpp',
              'openrtx/src/protocols/horse/melpe_horse.c',
              'openrtx/src/protocols/horse/HorseModulator.cpp',
-             'openrtx/src/protocols/horse/HorseDemodulator.cpp']
+             'openrtx/src/protocols/horse/HorseDemodulator.cpp',
+             'openrtx/src/core/horse_codec.c']
 
 horse_frame_test_src = ['openrtx/src/protocols/horse/HorseFrameEncoder.cpp',
                         'openrtx/src/protocols/horse/HorseFrameDecoder.cpp',
