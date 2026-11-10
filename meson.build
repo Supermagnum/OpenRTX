@@ -74,7 +74,9 @@ horse_src = [
              'openrtx/src/protocols/horse/HorseFrameDecoder.cpp',
              'openrtx/src/protocols/horse/HorseVoiceCodec.cpp',
              'openrtx/src/protocols/horse/melpe_horse.c'
-]
+,
+             'openrtx/src/protocols/horse/HorseModulator.cpp',
+             'openrtx/src/protocols/horse/HorseDemodulator.cpp']
 
 openrtx_inc = ['openrtx/include', 'platform']
 
@@ -1290,6 +1292,11 @@ horse_codec_test = executable('horse_codec_test',
                               cpp_args : linux_cpp_args,
                               link_args : linux_l_args)
 
+
+horse_loopback_test = executable('horse_loopback_test',
+                                 sources : unit_test_src + horse_src + ['tests/unit/horse_loopback.cpp'],
+                                 kwargs : unit_test_opts)
+
 cps_test = executable('cps_test',
                       sources : unit_test_src + ['tests/unit/cps.cpp'],
                       kwargs  : unit_test_opts)
@@ -1352,6 +1359,7 @@ test('M17 Meta Text Unit Test',         m17_metatext_test)
 test('Codeplug Test',         cps_test)
 test('Horse Frame Unit Test', horse_frame_test)
 test('Horse Codec Unit Test', horse_codec_test)
+test('Horse Loopback Unit Test', horse_loopback_test)
 ## test('Linux InputStream Test', linux_inputStream_test)
 test('minmea conversion Test', minmea_conversion_test)
 test('UI Check Standby Test', ui_check_standby_test)
