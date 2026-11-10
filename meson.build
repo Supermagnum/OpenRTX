@@ -1363,7 +1363,77 @@ horse_loopback_test = executable('horse_loopback_test',
                                  kwargs : unit_test_opts)
 
 
+horse_crypto_test_src = ['openrtx/src/protocols/horse/horse_crypto.c',
+                         'openrtx/src/protocols/horse/horse_heap.c',
+                         'openrtx/src/protocols/horse/horse_randombytes.c']
+horse_crypto_test = executable('horse_crypto_test',
+                               sources : horse_crypto_test_src + ['tests/unit/horse_crypto.cpp'],
+                               include_directories : openrtx_inc,
+                               dependencies : linux_deps,
+                               c_args : linux_c_args,
+                               cpp_args : linux_cpp_args,
+                               link_args : linux_l_args)
+
+horse_crypto_worker_test = executable('horse_crypto_worker_test',
+                                      sources : ['openrtx/src/protocols/horse/horse_crypto.c',
+                                                 'openrtx/src/protocols/horse/horse_heap.c',
+                                                 'openrtx/src/protocols/horse/horse_crypto_worker.c',
+                                                 'openrtx/src/protocols/horse/horse_randombytes.c',
+                                                 'tests/unit/horse_crypto_worker.cpp'],
+                                      include_directories : openrtx_inc,
+                                      dependencies : linux_deps + [threads_dep],
+                                      c_args : linux_c_args,
+                                      cpp_args : linux_cpp_args,
+                                      link_args : linux_l_args)
+
+horse_heap_test = executable('horse_heap_test',
+                             sources : ['openrtx/src/protocols/horse/horse_crypto.c',
+                                        'openrtx/src/protocols/horse/horse_heap.c',
+                                        'openrtx/src/protocols/horse/horse_crypto_worker.c',
+                                        'openrtx/src/protocols/horse/horse_randombytes.c',
+                                        'openrtx/src/protocols/horse/horse_keystore.c',
+                                        'tests/unit/horse_heap.cpp'],
+                             include_directories : openrtx_inc,
+                             dependencies : linux_deps + [threads_dep],
+                             c_args : linux_c_args + ['-DPLATFORM_LINUX'],
+                             cpp_args : linux_cpp_args + ['-DPLATFORM_LINUX'],
+                             link_args : linux_l_args)
+
+horse_peers_test = executable('horse_peers_test',
+                              sources : unit_test_src + horse_src + ['tests/unit/horse_peers.cpp'],
+                              kwargs : unit_test_opts)
+
+horse_keystore_test = executable('horse_keystore_test',
+                                 sources : ['openrtx/src/protocols/horse/horse_keystore.c',
+                                            'openrtx/src/protocols/horse/horse_crypto.c',
+                                            'openrtx/src/protocols/horse/horse_heap.c',
+                                            'openrtx/src/protocols/horse/horse_randombytes.c',
+                                            'tests/unit/horse_keystore.cpp'],
+                                 include_directories : openrtx_inc,
+                                 dependencies : linux_deps + [threads_dep],
+                                 c_args : linux_c_args,
+                                 cpp_args : linux_cpp_args,
+                                 link_args : linux_l_args)
+
+horse_randombytes_test = executable('horse_randombytes_test',
+                                    sources : ['openrtx/src/protocols/horse/horse_randombytes.c',
+                                               'openrtx/src/protocols/horse/horse_crypto.c',
+                                               'openrtx/src/protocols/horse/horse_heap.c',
+                                               'tests/unit/horse_randombytes.cpp'],
+                                    include_directories : openrtx_inc,
+                                    dependencies : linux_deps + [threads_dep],
+                                    c_args : linux_c_args + ['-DHORSE_RANDOMBYTES_TEST'],
+                                    cpp_args : linux_cpp_args + ['-DHORSE_RANDOMBYTES_TEST'],
+                                    link_args : linux_l_args,
+                                    override_options : ['b_coverage=false'])
+
 test('M17 Golay Unit Test',   m17_golay_test)
+test('Horse Crypto Unit Test', horse_crypto_test)
+test('Horse Crypto Worker Unit Test', horse_crypto_worker_test)
+test('Horse Heap Unit Test', horse_heap_test)
+test('Horse Peers Unit Test', horse_peers_test)
+test('Horse Keystore Unit Test', horse_keystore_test)
+test('Horse Randombytes Unit Test', horse_randombytes_test)
 test('Horse Loopback Unit Test', horse_loopback_test)
 test('Horse Codec Unit Test', horse_codec_test)
 test('Horse Frame Unit Test', horse_frame_test)
