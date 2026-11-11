@@ -9,7 +9,8 @@ security guarantee. Findings marked **confirmed** were traced end to end.
 Fuzzing was not run (cancelled by the owner).
 
 Linux Horse enablement is commit `7a2d775f`. This document is also the
-work list. Finding status:
+work list. All confirmed software findings are closed except C21.
+Finding status:
 
 | Id | Status |
 |----|--------|
@@ -95,146 +96,78 @@ succeeds and `OpMode_Horse.cpp` is part of the emulator binary.
 
 ## Confirmed bugs
 
-### C1. Voice MAC is not keyed by the session key -- critical
+### C1. Voice MAC is not keyed by the session key -- fixed
 
-- **Where:** `openrtx/src/protocols/horse/horse_crypto.c:191-198` (encrypt),
-  `:225-231` (decrypt).
-- **What is wrong:** BLAKE2b is keyed with the public string `"HVOICETAG"`,
-  not `session_key`, and does not bind the frame number. Anyone can
-  recompute a matching 32-bit tag over arbitrary ciphertext. Decrypt
-  then runs XChaCha20.
-- **Confirmed:** Live TX uses this tag as the only per-frame integrity in
-  encrypt and combined modes (`OpMode_Horse::sendTxVoiceFrame`). Signed-only
-  uses `horse_crypto_voice_auth_tag`, which does key BLAKE2b with `auth_key`.
-- **Proposed fix:** Keyed MAC (or XChaCha20-Poly1305) over `FN || ciphertext`
-  with a key derived from `session_key`. Do not treat a 32-bit tag as
-  sufficient. Fail if `tag` is NULL.
+- **Was:** BLAKE2b keyed with the public string `"HVOICETAG"`, no FN
+  bind; tag forgeable.
+- **Fix:** Session `k_tag` from ECDH (`4e789cbf` / `16a5b677`); keyed
+  MAC over direction, FN, and payload. Test: `horse_crypto_test`
+  rejects a forged `"HVOICETAG"` tag.
 
-### C2. TX fails open to cleartext -- critical
+### C2. TX fails open to cleartext -- fixed
 
-- **Where:** `OpMode_Horse.cpp:enable` (unlock return ignored, ~187);
-  `txState` (~454-478).
-- **What is wrong:** `horse.md` says fail closed without libsodium or a
-  locked keystore. Code defaults `want_encrypt = true` when both channel
-  flags are 0, then only sets `encryptTx` if crypto, contact X25519 and
-  ECDH all succeed. Otherwise LSF flags stay 0 and `sendTxVoiceFrame`
-  encodes plaintext with a zero tag.
-- **Confirmed:** `horse_crypto_available()` is false without
-  `HAVE_LIBSODIUM`. `horse_keystore_unlock` then returns false. `encryptTx`
-  stays false; TX still proceeds.
-- **Proposed fix:** If the channel requires encrypt or sign (including
-  the default-encrypt case), refuse TX (`opStatus = OFF`) when crypto,
-  keystore or contact is not ready. Never send voice without matching
-  LSF flags.
+- **Was:** Missing crypto/keystore/contact still allowed cleartext TX.
+- **Fix:** `c6bdad06` refuses TX (`opStatus = OFF`, UI `horseError`)
+  when encrypt/sign is required and crypto is not ready. Test:
+  `horse_tx_fail_test`.
 
-### C3. Demodulator acquisition sync is not a Horse sync word -- critical
+### C3. Demodulator acquisition sync is not a Horse sync word -- fixed
 
-- **Where:** `HorseDemodulator.hpp` in-class `streamSync` initializer
-  `{+1, +3, +3, -1, -1, +1, -1, +3}` vs encoder `byteToSymbols` in
-  `HorseUtils.hpp` and `HorseConstants.hpp`.
-- **What is wrong:** Encoder LUT (`00->+1, 01->+3, 10->-1, 11->-3`, MSB
-  dibit first) maps:
-  - LSF `5A A7` to `+3,+3,-1,-1,-1,-1,+3,-3`
-  - Voice `7E 9B` to `+3,-3,-3,-1,-1,+3,-1,-3`
-  - EOT `3C D8` to `+1,-3,-3,+1,-3,+3,-1,+1`
-  None match the correlator template. Later Hamming checks never run
-  unless lock is entered by chance.
-- **Confirmed:** Same LUT is used by the modulator (matches `horse.md`).
-  M17 uses a different, matching template in `Demodulator.hpp`.
-- **Proposed fix:** Initialise `streamSync` with LSF (and/or voice)
-  symbols from `byteToSymbols`. Prefer separate correlators per sync.
+- **Was:** Correlator template did not match Horse LSF/voice/EOT
+  symbols from `byteToSymbols`.
+- **Fix:** `c6337821` / `4d301939` acquire and track Horse sync words.
+  Test: `horse_loopback_test`.
 
-### C4. Signature chunk 5 reads/writes past a 64-byte signature -- high
-  (ASan: **critical** memory safety)
+### C4. Signature chunk 5 reads/writes past a 64-byte signature -- fixed
 
-- **Where:** TX `OpMode_Horse.cpp` `encodeVoiceFrameWithFn(txSessionSig + 60, ...)`;
-  RX `memcpy(rxSessionSig + chunk*12, melpe, 12)`; encoder always copies
-  12 bytes (`HorseFrameEncoder.cpp:68-69`).
-- **What is wrong:** 64-byte Ed25519 signature, six 12-byte slots:
-  last slot starts at offset 60 and copies 12 bytes (indices 60-71).
-- **Confirmed:** ASan on `Horse Frame Unit Test`:
-  `stack-buffer-overflow` READ of size 12 in
-  `encodeVoiceFrameWithFn` from `tests/unit/horse_frame.cpp:158`
-  (`test_sig_frames_roundtrip`). `signature[64]` overflows at the last
-  chunk. The test still passed without ASan.
-- **Proposed fix:** Copy `min(12, 64 - chunk*12)` bytes and zero-pad.
-  Use a 72-byte assembly buffer or an 8+4 split on frame 5.
+- **Was:** Six 12-byte slots over a 64-byte Ed25519 signature overflowed
+  on chunk 5 (ASan `stack-buffer-overflow`).
+- **Fix:** `c3f68754`; packing `13ac0cef` (5x12+4). Test:
+  `horse_frame_test`.
 
-### C5. Codec DMA is 20 ms; encode/decode assume 40 ms -- critical
+### C5. Codec DMA is 20 ms; encode/decode assume 40 ms -- fixed
 
-- **Where:** `horse_codec.c:156-176, 197-238`; `melpe_horse.c` encode/decode.
-- **What is wrong:** `audioStream_start(..., MELPE_HORSE_SAMPLES_40MS=320,
-  BUF_CIRC_DOUBLE)` -- the existing codec path documents that
-  `inputStream_getData` returns **half** the buffer (160 samples = 20 ms).
-  Encode: short blocks become zero frames. Decode: `getIdleBuffer` is
-  160 samples; `melpe_horse_decode` writes 320 `int16_t`s.
-- **Confirmed:** Same double-buffer contract as `audio_codec.c`.
-- **Proposed fix:** Start the stream with 640 samples, or accumulate two
-  20 ms blocks; decode into a 320-sample staging buffer then copy halves.
+- **Was:** Stream started at 320 samples; DMA returned 20 ms halves
+  while MELPe path assumed 40 ms.
+- **Fix:** `8b965e29` matches the double-buffer contract. Test:
+  `horse_codec_test`.
 
-### C6. Frame-number space collides; XChaCha20 nonce is only those 16 bits -- high
+### C6. Frame-number space collides; XChaCha20 nonce is only those 16 bits -- fixed
 
-- **Where:** `HorseFrameEncoder.cpp:63-74`; `OpMode_Horse.cpp` `horse_is_sig_frame`;
-  `horse_crypto.c:354-362` (`horse_crypto_voice_nonce_from_fn`).
-- **What is wrong:** Voice FN is 15 bits (`& 0x7FFF`), wrap after 32768
-  frames (~21.8 min at 40 ms). Last frame ORs `0x8000`. Signature frames
-  reuse the voice FN field at `0x7000-0x7005`. After ~19 min ordinary
-  voice FN enters that range; RX treats it as signature material.
-  Nonce is 10 zero bytes plus FN. Wrap under one session key is
-  XChaCha20 nonce reuse.
-- **Confirmed:** Encoder increment, RX classifier, nonce helper write
-  only bytes 10-11. Session key is per-call, so reuse is intra-call.
-- **Proposed fix:** Dedicated frame type (or a reserved high range never
-  used for voice). 96-bit nonce = `session_id || FN32`. Stop TX before wrap.
+- **Was:** Signature FN range overlapped voice FN; nonce was only 16-bit
+  FN.
+- **Fix:** `08e6c3cb` / `4e789cbf` separate layout and stop TX before
+  wrap. Test: `horse_crypto_test`.
 
 ### C7. Argon2id moderate (~256 MiB) vs STM32F405 -- fixed
 
-- **Where:** `horse_crypto.c` `crypto_pwhash`; `horse_heap.*`.
 - **Fix:** Argon2id `opslimit=2` / `memlimit=16384`. No PBKDF2. Host
   tracker `horse_heap_peak()` notes Argon2 + worker stack; budget
   `HORSE_HEAP_BUDGET_BYTES` (53248) derived from MD-3x0 heap 89600 B.
-  Test: `horse_heap_test`. There is no `state.heap_usage` field in
-  upstream or this fork; device Info menu shows
-  `getHeapSize() - getCurrentFreeHeap()`. Large buffers stay on the
-  heap (not `.bss`). Optional on-radio HWM check is HARDWARE_TEST_PLAN
-  step 1 (not an open software bug).
+  Test: `horse_heap_test`. Optional on-radio HWM check is
+  HARDWARE_TEST_PLAN step 1 (not an open software bug).
 
-### C8. Passphrase stored in plaintext `settings_t` -- high
+### C8. Passphrase stored in plaintext `settings_t` -- fixed
 
-- **Where:** `openrtx/include/core/settings.h:54`; persisted via
-  `nvm_writeSettingsAndVfo` (`state.c`).
-- **What is wrong:** `char horse_passphrase[33]` is a normal settings
-  field. Shutdown writes the whole struct to NVM. No UI editor; unlock
-  and provision read it (`OpMode_Horse::enable`, `horse_provision.c`).
-- **Confirmed:** Packed `settings_t` includes the field; NVM write uses
-  `sizeof(settings_t)`.
-- **Proposed fix:** Do not persist the passphrase. Prompt at unlock,
-  keep in RAM, `sodium_memzero` on lock. If a settings field is
-  required, store a verifier only.
+- **Was:** `char horse_passphrase[33]` persisted in NVM via
+  `settings_t`.
+- **Fix:** `4015daa2` keeps the passphrase RAM-only; empty/short
+  rejected (`HORSE_PASSPHRASE_MIN` 8). Test: `horse_keystore_test`.
 
 ### C9. `contact_t` / `settings_t` layout change -- fixed
 
-- **Fix:** Horse peers are a sidecar (`struct horse_peer`); `contact_t` remains
-  39 B. Passphrase is RAM-only; `settings_t` remains 84 B and matches
-  upstream (`tests/unit/horse_settings_upstream.py`). `horseInfo_t`
-  (4 B) fits the existing channel union. `cps_layout_test` asserts
-  packed sizes/offsets. `settings_t` stays append-only. Old `.rtxc`
-  files keep the upstream contact stride; MDx/CS7000 settings load
-  with the same `sizeof(settings_t)` CRC path as upstream when Horse
-  is off.
+- **Fix:** Horse peers are a sidecar (`struct horse_peer`); `contact_t`
+  remains 39 B. Passphrase is RAM-only; `settings_t` remains 84 B and
+  matches upstream (`tests/unit/horse_settings_upstream.py`).
+  `horseInfo_t` (4 B) fits the existing channel union.
+  `cps_layout_test` asserts packed sizes/offsets.
 
-### C10. Provisioning packs a 32-byte Ed25519 seed into a 64-byte field -- critical (sign path)
+### C10. Provisioning packs a 32-byte Ed25519 seed into a 64-byte field -- fixed
 
-- **Where:** `scripts/horse_provision.py:91-92, 116-124`; firmware
-  `struct horse_identity_keys.ed25519_sk[64]`; `crypto_sign_detached`
-  (`horse_crypto.c`).
-- **What is wrong:** PyNaCl `bytes(signing_key)` is the 32-byte seed.
-  `struct.pack("...64s...")` null-pads to 64. Libsodium's 64-byte sk is
-  `seed || pk`. Signing with `sk[32:64]==0` does not match `ed25519_pk`.
-- **Confirmed:** Pack format vs libsodium sk layout; TX
-  `horse_crypto_sign(id->ed25519_sk, ...)`.
-- **Proposed fix:** Pack `bytes(signing_key) + bytes(verify_key)`.
-  Validate sk/pk consistency on store.
+- **Was:** PyNaCl 32-byte seed null-padded to 64; libsodium expects
+  `seed || pk`.
+- **Fix:** `80404ce2` packs seed plus verify key. Test:
+  `horse_host_interop_test`.
 
 ### C11. Kernel keyring round-trip is broken; `show` prints secret material -- fixed
 
@@ -244,30 +177,21 @@ succeeds and `OpMode_Horse.cpp` is part of the emulator binary.
   files (`horse_identity_*.bin` mode 0600). `show` prints public keys
   and fingerprint only.
 
-### C12. Encrypted RX without a session still starts audio -- high
+### C12. Encrypted RX without a session still starts audio -- fixed
 
-- **Where:** `OpMode_Horse.cpp` rxState LSF + voice.
-- **What is wrong:** Session key is derived only if the keystore is
-  unlocked. If LSF has `LSF_FLAG_ENCRYPTED` but ECDH fails, `encryptRx`
-  stays false and the payload is pushed to the codec (ciphertext as
-  "voice"). Combined+locked may drop via the sign branch.
-- **Proposed fix:** If LSF encrypted and `!sessionValid`, do not open
-  RX audio and do not push frames.
+- **Was:** Encrypted LSF without a valid session still opened RX audio.
+- **Fix:** `c6bdad06` drops encrypted voice when `!sessionValid`.
+  Tests: `horse_session_modem` / loopback negatives.
 
 ### C13. Horse TX never enables RF TX on MD-3x0 -- fixed
 
-- **Was:** OpMode never called `radio_enableTx()`. Commit `465707c4`
-  added the OpMode call after key agreement and `abortTx` →
-  `radio_disableRtx()`, but left `radio_MD3x0.cpp` `radio_enableTx()`
-  with only `OPMODE_FM` / `OPMODE_M17`. Horse still hit `default`:
-  `TX_STG_EN` keyed the PA while `C5000.startAnalogTx()` was never
-  called (likely an unmodulated carrier on a real radio).
+- **Was:** `radio_enableTx()` had no `OPMODE_HORSE` case; PA keyed
+  without `C5000.startAnalogTx()`.
 - **Fix:** `#ifdef CONFIG_HORSE` `case OPMODE_HORSE:` starts analog TX
   from `LINE_IN` with `FmConfig::BW_12p5kHz`, matching
-  `radio_setOpmode` BW_12_5 / mod factor `0x1E`. Every abort/EOT path
-  still goes through `radio_disableRtx()` → `C5000.stopAnalogTx()`.
-- Software path closed. On-air check is HARDWARE_TEST_PLAN step 3.
-  Bandwidth vs M17 25 kHz remains C21 (open).
+  `radio_setOpmode` BW_12_5 / mod factor `0x1E`. Abort/EOT still goes
+  through `radio_disableRtx()`. On-air check is HARDWARE_TEST_PLAN
+  step 3. Bandwidth vs M17 25 kHz remains C21 (open).
 
 ### C14. RTX stack 512 B vs Horse work -- fixed
 
@@ -284,22 +208,15 @@ succeeds and `OpMode_Horse.cpp` is part of the emulator binary.
   `rx_len`. Keystore mutex in `fb86c4ed`. `MSG_SEND_IDENTITY` is
   accepted only while Settings > Horse Prov has opened a 120 s window;
   the radio shows the public fingerprint and stores only after ENTER
-  (`horse_provision_confirm`). UI never calls the radio API. Host
-  tests: refuse outside mode, refuse after timeout, accept after
-  confirm (`horse_provision_sock_test`).
+  (`horse_provision_confirm`). Host tests: `horse_provision_sock_test`.
 
-### C16. Mode cycle leaves garbage in `horseInfo_t` -- medium
+### C16. Mode cycle leaves garbage in `horseInfo_t` -- fixed
 
-- **Where:** `openrtx/src/ui/default/ui.c` macro 5 only changes
-  `channel.mode`.
-- **What is wrong:** The tagged union still holds FM/M17 bytes, so
-  `encrypt_en` / `contact_index` are leftover bits. Combined with C2
-  this can TX cleartext or the wrong contact. Native CPS never fills
-  Horse fields.
-- **Proposed fix:** On switch to Horse, zero `channel.horse` and require
-  a provisioned Horse contact.
+- **Was:** Mode switch left FM/M17 bits in the Horse channel union.
+- **Fix:** `1ca16357` zeros `channel.horse` on switch to Horse. Test:
+  `horse_info_test`.
 
-### C17. LDPC / MELPe names vs reality -- closed (protocol v2)
+### C17. LDPC / MELPe names vs reality -- fixed (protocol v2)
 
 - **Was:** `ldpc_horse.c` repeat-2 misnamed as LDPC; fragile voice FEC.
 - **Fix:** Option-C M17 convolutional coding via existing
@@ -308,7 +225,7 @@ succeeds and `OpMode_Horse.cpp` is part of the emulator binary.
   CODEC2 2400 (`melpe_horse.c` name kept for path continuity).
 - **Normative:** `docs/horse/HORSE_FEC_V2.md` option C / section 7b.
 
-### C20. LSF has no FEC and no checksum -- closed (protocol v2)
+### C20. LSF has no FEC and no checksum -- fixed (protocol v2)
 
 - **Was:** single uncoded 46-byte LSF; reception limit on analog
   loopback (121/200 intact at sigma 10000).
@@ -446,24 +363,15 @@ see `UPSTREAM_ISSUE_dsp.md`).
 | Gain 0.25 | 3/3 | -- |
 | Drop first TX frame | 3/3 | -- |
 
-Still not covered: `OpMode_Horse` TX/RX on the air, MD-3x0, and a
-session-keyed voice MAC (C1).
+Host coverage for C1/C4/C18 is in the status table. On-air MD-3x0 TX/RX
+remains HARDWARE_TEST_PLAN (not an open software finding).
 
-- `horse_frame.cpp`: LSF/voice/EOT round-trip on bytes.
-- `horse_crypto.cpp`: Encrypt round-trip needs sodium. Negative tests
-  pass without sodium because decrypt returns false. Sign test can use
-  all-zero keys. No check that the MAC is session-keyed (a forged
-  `"HVOICETAG"` tag would still pass).
-- No unit test of `OpMode_Horse` TX/RX, so `horse.md`'s "exercised in
-  OpMode_Horse and unit tests" is false for the opmode.
+### C19. Keys not wiped with `sodium_memzero` -- fixed
 
-### C19. Keys not wiped with `sodium_memzero` -- medium
-
-- **Where:** `horse_keystore.c` wrap key left on the stack after unlock;
-  `OpMode_Horse.cpp` `memset` on `sessionKey` / `eph_sk` (compiler may
-  drop `memset` on secrets).
-- **Proposed fix:** `sodium_memzero` on wrap keys, eph_sk, session_key,
-  identity copies.
+- **Was:** wrap key left on the stack after unlock; `memset` on
+  `sessionKey` / `eph_sk` (compiler may drop).
+- **Fix:** `c6bdad06` / `fb86c4ed` use `sodium_memzero` on wrap keys,
+  eph_sk, session_key, and identity copies.
 
 ### C21. Horse MD-3x0 channel bandwidth 12.5 kHz vs M17 25 kHz -- open
 
