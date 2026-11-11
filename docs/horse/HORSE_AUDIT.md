@@ -19,27 +19,27 @@ work list. Finding status:
 | C4 signature chunk overflow | fixed in `c3f68754`; packing `13ac0cef` (5x12+4); test `horse_frame_test` |
 | C5 20 ms DMA vs 40 ms codec | fixed in `8b965e29`; test `horse_codec_test` |
 | C6 FN / nonce layout | fixed in `08e6c3cb` / `4e789cbf`; test `horse_crypto_test` |
-| C7 Argon2 RAM / PBKDF2 | fixed: 16 KiB Argon2id; no PBKDF2; `horse_heap` peak vs 53248 B budget (`horse_heap_test`); device HWM needs hardware (HARDWARE_TEST_PLAN step 1 / heap step) |
+| C7 Argon2 RAM / PBKDF2 | fixed: 16 KiB Argon2id; no PBKDF2; `horse_heap` peak vs 53248 B budget (`horse_heap_test`) |
 | C8 passphrase in `settings_t` | fixed in `4015daa2` (RAM-only); empty/short rejected (`HORSE_PASSPHRASE_MIN` 8); test `horse_keystore_test` |
 | C9 `contact_t` growth | fixed in `1b79bbdb` (sidecar peers); `contact_t` 39 B / `settings_t` 84 B match upstream (`cps_layout_test`, `horse_settings_upstream.py`) |
 | C10 Ed25519 seed padded to 64 | fixed in `80404ce2`; test `horse_host_interop_test` |
 | C11 keyring hex/JSON | fixed in `80404ce2` / `31495ec7` (XDG files; `show` publics only) |
 | C12 encrypted RX without session | fixed in `c6bdad06`; test `horse_session_modem` / loopback negatives |
-| C13 MD-3x0 C5000 TX enable | needs hardware: driver `OPMODE_HORSE` present; HARDWARE_TEST_PLAN step 3 |
+| C13 MD-3x0 C5000 TX enable | fixed: driver `OPMODE_HORSE` LINE_IN path; RF check remains HARDWARE_TEST_PLAN step 3 |
 | C14 RTX 512 B stack | fixed: sodium on 16 KiB worker; `scripts/check_horse_stack_usage.py` enforced in ARM CI build |
 | C15 keystore race / oversized hdr / unauth provision | fixed: mutex `fb86c4ed`; oversized `hdr->len` resets; `MSG_SEND_IDENTITY` only in menu provision mode + fingerprint confirm + 120 s timeout (`horse_provision_sock_test`) |
 | C16 `horseInfo_t` garbage on mode switch | fixed in `1ca16357`; test `horse_info_test` |
 | C17 LDPC name vs repeat-2 | fixed in v2: M17 option-C voice `0de39b89`; `ldpc_horse` removed |
-| C18 tests vs claims | fixed: `horse_test_opmode_buffer_e2e` (encrypt/sign/combined via OpMode); `horse_session_modem` / loopback; RF needs hardware |
+| C18 tests vs claims | fixed: `horse_test_opmode_buffer_e2e` (encrypt/sign/combined via OpMode); `horse_session_modem` / loopback |
 | C19 `sodium_memzero` | fixed in `c6bdad06` / `fb86c4ed` |
 | C20 LSF has no FEC and no checksum | fixed in v2: three M17-coded opening frames + CRC-16 `4003bcf2`; fragments `d2e4405d` |
 | C21 MD-3x0 Horse BW 12.5 vs M17 25 kHz | open; analysis below; no code change without measurement; HARDWARE_TEST_PLAN step 10 |
-| M17 `dsp.cpp:19` UBSan | waiting for upstream: OpenRTX/OpenRTX#564; fork keeps `-fno-sanitize=shift` (`83e4a806`) |
+| M17 `dsp.cpp:19` UBSan | fixed upstream: OpenRTX/OpenRTX#564 (`f403de9d`); drop fork `-fno-sanitize=shift` on rebase |
 | `horse_keytool.py` | fixed: removed (`31495ec7`); use `scripts/horse_provision.py` |
 | LSF bind / channel flags | fixed: `b1f207f5` |
 | False-lock Hamming 0 + tag drop | fixed: `b9f6331c`; NCC floor removed `18a4d420` |
 | Native meson test vs ARM firmware | fixed: reverted `a5fc2f08`; procedure in `AGENTS.md` (`--no-rebuild`) |
-| Sanitizer Horse timeouts / `-fno-sanitize=shift` | waiting for upstream with dsp.cpp:19 (#564) |
+| Sanitizer Horse timeouts / `-fno-sanitize=shift` | fixed upstream with #564; remove fork workaround on rebase onto post-564 master |
 | ECIES dead code | fixed: `c18faa08` |
 | Python/C identity interop | fixed: `3bb7439a`; test `horse_host_interop_test` |
 
@@ -187,7 +187,7 @@ succeeds and `OpMode_Horse.cpp` is part of the emulator binary.
 - **Proposed fix:** Dedicated frame type (or a reserved high range never
   used for voice). 96-bit nonce = `session_id || FN32`. Stop TX before wrap.
 
-### C7. Argon2id moderate (~256 MiB) vs STM32F405 -- fixed (host) / needs hardware (device HWM)
+### C7. Argon2id moderate (~256 MiB) vs STM32F405 -- fixed
 
 - **Where:** `horse_crypto.c` `crypto_pwhash`; `horse_heap.*`.
 - **Fix:** Argon2id `opslimit=2` / `memlimit=16384`. No PBKDF2. Host
@@ -196,7 +196,8 @@ succeeds and `OpMode_Horse.cpp` is part of the emulator binary.
   Test: `horse_heap_test`. There is no `state.heap_usage` field in
   upstream or this fork; device Info menu shows
   `getHeapSize() - getCurrentFreeHeap()`. Large buffers stay on the
-  heap (not `.bss`). Device peak still needs HARDWARE_TEST_PLAN.
+  heap (not `.bss`). Optional on-radio HWM check is HARDWARE_TEST_PLAN
+  step 1 (not an open software bug).
 
 ### C8. Passphrase stored in plaintext `settings_t` -- high
 
@@ -253,7 +254,7 @@ succeeds and `OpMode_Horse.cpp` is part of the emulator binary.
 - **Proposed fix:** If LSF encrypted and `!sessionValid`, do not open
   RX audio and do not push frames.
 
-### C13. Horse TX never enables RF TX on MD-3x0 -- needs hardware
+### C13. Horse TX never enables RF TX on MD-3x0 -- fixed
 
 - **Was:** OpMode never called `radio_enableTx()`. Commit `465707c4`
   added the OpMode call after key agreement and `abortTx` →
@@ -265,7 +266,8 @@ succeeds and `OpMode_Horse.cpp` is part of the emulator binary.
   from `LINE_IN` with `FmConfig::BW_12p5kHz`, matching
   `radio_setOpmode` BW_12_5 / mod factor `0x1E`. Every abort/EOT path
   still goes through `radio_disableRtx()` → `C5000.stopAnalogTx()`.
-- **Untested on hardware.** Bandwidth vs M17 25 kHz is C21.
+- Software path closed. On-air check is HARDWARE_TEST_PLAN step 3.
+  Bandwidth vs M17 25 kHz remains C21 (open).
 
 ### C14. RTX stack 512 B vs Horse work -- fixed
 
@@ -316,14 +318,15 @@ succeeds and `OpMode_Horse.cpp` is part of the emulator binary.
   and new sync words (`dc8c906a`).
 - **Normative:** `docs/horse/HORSE_FEC_V2.md` section 7b.
 
-### C18. Tests do not cover the claims -- fixed (RF needs hardware)
+### C18. Tests do not cover the claims -- fixed
 
 Host analog loopback (`tests/unit/horse_loopback.cpp`) covers layers a–d.
 Session-keyed voice MAC (C1) is covered by `tests/unit/horse_crypto.cpp`.
 Three-mode modem loopback is in `horse_session_modem.cpp`.
 `horse_test_opmode_buffer_e2e` drives `OpMode_Horse::sendTxVoiceFrame`
-for encrypt, sign, and combined (cleartext TX refused by C2). RF /
-C5000 paths remain needs-hardware (HARDWARE_TEST_PLAN steps 3–6).
+for encrypt, sign, and combined (cleartext TX refused by C2). Optional
+RF / C5000 on-air checks stay in HARDWARE_TEST_PLAN steps 3–6 (not open
+software bugs).
 
 ### Cost figures (host, protocol v2)
 
@@ -513,21 +516,15 @@ session-keyed voice MAC (C1).
 
 ## ASan / UBSan
 
-Built with `meson setup build_asan -Db_sanitize=address,undefined` and
-`meson test -C build_asan`.
+Early ASan run caught C4 (`Horse Frame` stack-buffer-overflow) and
+UBSan on upstream `dsp_dcBlockFilter` (`dsp.cpp:19`). C4 is fixed
+(`c3f68754` / packing `13ac0cef`). The DC-block UB was fixed upstream
+in OpenRTX/OpenRTX#564 (`f403de9d`, multiply instead of left shift).
+After rebasing onto that commit, drop the fork
+`-fno-sanitize=shift` workaround (`83e4a806`).
 
-| Test | Result |
-|------|--------|
-| Horse Crypto Unit Test | PASS |
-| Horse Frame Unit Test | FAIL -- C4 stack-buffer-overflow |
-| 12 other tests | PASS |
-| M17 Demodulator Test | FAIL -- UBSan `dsp_dcBlockFilter` left shift of negative value (`dsp.cpp:19`). Upstream DSP, not Horse. |
-
-Fuzz targets were not run.
-
-Later (C18): unsanitized `meson test -C build_linux` is 19/19, including
-Horse Loopback. Horse Frame no longer overflows (C4). Address/UBSan of
-the DC-block loopback path still hits `dsp.cpp:19`.
+Unsanitized `meson test -C build_linux` covers Horse Frame, Loopback,
+and OpMode buffer E2E. Fuzz targets were not run.
 
 ---
 
