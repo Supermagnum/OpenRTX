@@ -34,7 +34,7 @@ hardware.
 | Radio model | M17 RX | M17 TX | Horse RX | Horse TX | Notes |
 | ----------- | :----: | :----: | :------: | :------: | ----- |
 | MD-380/390/RT3 **(VHF)** | Yes | No | Built (untested) | **Refused** (`HORSE_ERR_VHF`) | Same RF path as M17; TX refused in software |
-| MD-380/390/RT3 **(UHF)** | Yes | Yes | Built (untested) | Built (untested) | C13 C5000 LINE_IN fix; deviation C21 open |
+| MD-380/390/RT3 **(UHF)** | Yes | Yes | Built (untested) | Built (untested) | C13 closed (C5000 LINE_IN); deviation C21 open |
 | MD-UV380 / RT3s | Yes | Yes | Not built | Not built | See work list below |
 | GD-77 | N/A | N/A | N/A | N/A | No M17; Horse not possible |
 | DM-1801 | N/A | N/A | N/A | N/A | No M17; Horse not possible |
